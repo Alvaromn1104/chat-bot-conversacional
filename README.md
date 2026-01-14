@@ -95,12 +95,3 @@ Checkout (Validación)
 
 Usuario: Finalizar compra
 
-## 🧠 Visión general de la arquitectura
-
-- Motor conversacional basado en LangGraph para gestionar el estado del formulario y el carrito.
-
-- Parsers deterministas para asegurar precisión en IDs y precios.
-
-- Servicios de dominio independientes (Catalog, Cart, Order).
-
-- Capa UX centralizada para una voz de marca consistente.
