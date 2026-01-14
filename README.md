@@ -37,12 +37,15 @@ Este frontend permite:
 - Ver cómo el sistema interpreta lenguaje natural y ejecuta acciones sobre catálogo, carrito y checkout.
 - Evaluar el comportamiento del motor conversacional sin necesidad de integrar un frontend externo.
 
-La demo conecta directamente con el backend (LangGraph + reglas deterministas + LLM opcional), por lo que refleja fielmente el comportamiento real del sistema.
+La demo conecta directamente con el backend (**LangGraph + reglas deterministas + LLM opcional**), por lo que refleja fielmente el comportamiento real del sistema.
+
+> 💡 **Nota sobre el frontend**  
+> El frontend se ha implementado deliberadamente en **un único archivo (`gradio_chat.py`)** para simplificar su ejecución, revisión y uso.  
+> De este modo, se evita la creación de un repositorio adicional y se mantiene el foco en el **núcleo del proyecto: la lógica y el comportamiento del chatbot conversacional**.
 
 ### Ejecución de la demo
 
 python gradio_chat.py
-
 
 ## ✨ Funcionalidades Principales
 
