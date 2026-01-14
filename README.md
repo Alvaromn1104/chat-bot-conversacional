@@ -79,19 +79,19 @@ pytest -q
 
 ## 💬 Ejemplos de uso
 
-Consulta de Capacidades
+### Consulta de Capacidades
 
 Usuario: ¿Qué puedes hacer?
 
 Bot: Puedo ayudarte a buscar perfumes por aroma o precio, gestionar tu carrito y tramitar tu compra. Prueba a decirme "Busca perfumes cítricos".
 
-Recomendaciones
+### Recomendaciones
 
 Usuario: Búscame un perfume para mujer de menos de 80€
 
 Bot: He encontrado estas opciones para ti: ...
 
-Checkout (Validación)
+### Checkout (Validación)
 
 Usuario: Finalizar compra
 
