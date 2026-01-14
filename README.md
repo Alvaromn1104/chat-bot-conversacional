@@ -95,3 +95,64 @@ Bot: He encontrado estas opciones para ti: ...
 
 Usuario: Finalizar compra
 
+---
+
+## 📁 Demo adicional (Notebook y registros de conversación)
+
+Como complemento, el proyecto incluye material demostrativo para facilitar la evaluación del comportamiento conversacional sin necesidad de ejecutar el sistema completo.
+
+### 📓 Notebook / Script de demostración
+
+En la carpeta `docs/` se incluye un **notebook o script de demo** que muestra:
+
+- Ejecución de conversaciones completas paso a paso.
+- Ejemplos de parsing determinista (carrito, recomendaciones).
+- Flujo de estados del asistente sin necesidad de frontend.
+
+Este material permite revisar rápidamente la lógica del sistema y entender cómo se combinan reglas, estado y (opcionalmente) LLM.
+
+### 💬 Registro de conversaciones
+
+También se incluye un **archivo de registro de conversación** con ejemplos reales de interacción usuario–bot, donde se pueden observar:
+
+- Resolución de ambigüedades.
+- Operaciones múltiples de carrito en un solo mensaje.
+- Cambio de idioma durante la conversación.
+- Flujos completos de recomendación y checkout.
+
+---
+
+## 🌍 Soporte multilenguaje (ES / EN)
+
+El asistente está diseñado para operar de forma natural tanto en **español como en inglés**.
+
+### Características clave:
+
+- Detección automática del idioma del usuario.
+- Respuestas coherentes en el idioma detectado.
+- Cambio dinámico de idioma durante la conversación si el usuario lo hace.
+- Copys centralizados por idioma para facilitar mantenimiento y extensión.
+
+Ejemplo:
+
+> Usuario inicia en español → el bot responde en español  
+> Usuario cambia a inglés → el bot adapta automáticamente sus respuestas
+
+---
+
+## 🧩 Diseño orientado a producción
+
+Aunque se trata de una prueba técnica, el backend está estructurado con criterios cercanos a un entorno real:
+
+- Separación clara entre:
+  - reglas de routing
+  - nodos de conversación
+  - servicios de dominio
+  - capa de UX / copy
+- Flujos deterministas priorizados antes de recurrir a LLM.
+- Estados limpiados explícitamente para evitar efectos colaterales entre turnos.
+- Arquitectura fácilmente extensible a nuevos intents, idiomas o canales (chat, API, UI).
+
+---
+
+
