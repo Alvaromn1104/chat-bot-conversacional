@@ -1,55 +1,84 @@
 from __future__ import annotations
 
 import re
+import logging
 
 from app.engine.state import ConversationState, Mode
-from app.graph.routing.rules import RULES, _explicit_language_switch, apply_recommend_heuristic
-from app.graph.routing.selectors import _llm_enabled, _min_confidence, select_next_node_heuristic
+from app.graph.routing.rules import RULES
+from app.graph.routing.rules.common_rules import explicit_language_switch
+from app.ux import t
+from app.llm.config import llm_enabled, llm_min_confidence
 from app.llm.openai_router import interpret_with_openai
 from app.llm.router_schema import Intent
 
+logger = logging.getLogger("app.graph.nodes.interpret")
+
+_INTENT_TO_NODE: dict[Intent, str] = {
+    Intent.SHOW_CATALOG: "show_catalog",
+    Intent.SHOW_PRODUCT_DETAIL: "show_product_detail",
+    Intent.ADD_TO_CART: "add_to_cart",
+    Intent.REMOVE_FROM_CART: "remove_from_cart",
+    Intent.VIEW_CART: "view_cart",
+    Intent.CHECKOUT: "checkout_confirm",
+    Intent.RECOMMEND_PRODUCT: "recommend_product",
+    Intent.BULK_CART_UPDATE: "bulk_cart_update",
+    Intent.END: "echo",
+    Intent.UNKNOWN: "echo",
+}
+
+def _can_accept_intent(state: ConversationState, intent: Intent) -> bool:
+    """Guardrail único: evita que el LLM rompa flujos por modo."""
+    if state.should_end or state.mode == Mode.END:
+        return False
+
+    # En estos modos, SOLO se acepta el flujo de checkout
+    if state.mode == Mode.CHECKOUT_CONFIRM:
+        return intent in {Intent.CONFIRM_YES, Intent.CONFIRM_NO, Intent.UNKNOWN}
+    if state.mode == Mode.CHECKOUT_REVIEW:
+        return intent in {Intent.CONFIRM_YES, Intent.CONFIRM_NO, Intent.UNKNOWN}
+    if state.mode == Mode.COLLECT_SHIPPING:
+        # durante el popup, el chat no debería cambiar de flow
+        return intent in {Intent.UNKNOWN}
+
+    return True
 
 def interpret_user_node(state: ConversationState) -> ConversationState:
-    print("[INTERPRET] msg=", repr(state.user_message), "mode=", state.mode)
-    print("[INTERPRET] LLM_ENABLED=", _llm_enabled())
-
-    # Hard stop: si ya terminó, no limpies nada
+    # Hard stop
     if state.should_end or state.mode == Mode.END:
         return state
 
-    # Reset de salida del turno (evita repetir el último mensaje)
+    # Reset salida del turno
     state.assistant_message = ""
     state.ui_products = []
     state.ui_product = None
     state.ui_cart_total = None
-
-    # Evita reusar el nodo del turno anterior
     state.next_node = None
 
-    # 1) Deterministic rules pipeline (works both with/without LLM)
+    # 1) RULES manda
     for rule in RULES:
         if rule(state):
             return state
 
-    # 2) LLM router (only when enabled)
-    if _llm_enabled():
+    # 2) LLM (solo para slots + propuesta)
+    if llm_enabled():
         try:
             rr = interpret_with_openai(state)
 
-            if rr.confidence >= _min_confidence() and rr.intent != Intent.UNKNOWN:
-                if rr.language and _explicit_language_switch(state.user_message):
+            if rr.confidence >= llm_min_confidence() and rr.intent != Intent.UNKNOWN:
+                # idioma
+                if rr.language and explicit_language_switch(state.user_message):
                     state.preferred_language = rr.language
 
+                # END: se resuelve aquí (no como nodo)
                 if rr.intent == Intent.END:
                     state.mode = Mode.END
                     state.should_end = True
-                    state.assistant_message = (
-                        "Conversación finalizada. Gracias por visitarnos."
-                        if (state.preferred_language or "en") == "es"
-                        else "Conversation ended. Thank you for visiting."
-                    )
+                    state.assistant_message = t(state, "ended")
+                    state.next_node = "echo"
                     return state
 
+
+                # slots recomendación
                 if rr.family is not None:
                     state.recommended_family = rr.family
                 if rr.audience is not None:
@@ -59,21 +88,19 @@ def interpret_user_node(state: ConversationState) -> ConversationState:
                 if rr.min_price is not None:
                     state.recommended_min_price = rr.min_price
 
+                # product_id solo si aparece en texto
                 if rr.product_id is not None and re.search(rf"\b{rr.product_id}\b", state.user_message or ""):
                     state.selected_product_id = rr.product_id
 
-                state.last_intent = rr.intent.value
-                state.last_confidence = rr.confidence
-                state.next_node = rr.intent.value
-                return state
+                if _can_accept_intent(state, rr.intent):
+                    state.last_intent = rr.intent.value
+                    state.last_confidence = rr.confidence
+                    state.next_node = _INTENT_TO_NODE.get(rr.intent, "echo")
+                    return state
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("LLM router failed: %s", e)
 
-        # ✅ fallback recomendación heurística si el LLM no resolvió
-        if apply_recommend_heuristic(state):
-            return state
-
-    # 3) Fallback heuristic
-    state.next_node = select_next_node_heuristic(state)
+    # 3) fallback único
+    state.next_node = "echo"
     return state

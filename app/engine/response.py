@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import re
+
 from app.engine.state import ConversationState, Mode
 from app.ux import t
 
 
+# Used to remove emojis from responses in sensitive UX flows (e.g., checkout),
+# where tone should remain neutral and unambiguous.
 _EMOJI_RE = re.compile(
     "["
     "\U0001F300-\U0001F5FF"
@@ -24,8 +27,10 @@ _EMOJI_RE = re.compile(
 def finalize_assistant_message(state: ConversationState) -> None:
     """
     Apply consistent UX rules to every assistant response.
-    """
 
+    This is a post-processing step to keep responses predictable across nodes
+    and avoid leaking formatting differences into the frontend.
+    """
     if state.should_end or state.mode == Mode.END:
         return
 
@@ -33,7 +38,8 @@ def finalize_assistant_message(state: ConversationState) -> None:
     if not msg:
         msg = t(state, "fallback_ok")
 
-    
+    # In checkout-related steps, avoid emojis to keep the message tone neutral
+    # and reduce the risk of confusion in transactional flows.
     if state.mode in {
         Mode.CHECKOUT_CONFIRM,
         Mode.CHECKOUT_REVIEW,
@@ -43,9 +49,9 @@ def finalize_assistant_message(state: ConversationState) -> None:
         state.assistant_message = msg
         return
 
-    
     follow_up = t(state, "follow_up")
 
+    # Prevent duplicating the follow-up prompt when the message already includes it.
     if follow_up and follow_up.lower() in msg.lower():
         state.assistant_message = msg
         return

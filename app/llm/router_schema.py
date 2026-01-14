@@ -5,9 +5,10 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+
 class CartOp(str, Enum):
     """
-    Supported cart operations.
+    Supported cart operations extracted from user input.
     """
     ADD = "add"
     REMOVE = "remove"
@@ -15,15 +16,18 @@ class CartOp(str, Enum):
 
 class CartAction(BaseModel):
     """
-    A single cart operation extracted from user input.
+    A single cart operation extracted from the user message.
     """
     op: CartOp
     product_id: int = Field(ge=100, le=999)
     qty: int = Field(default=1, ge=1)
 
+
 class Intent(str, Enum):
     """
     Supported intents for the e-commerce assistant.
+
+    These values are used by the router to drive deterministic graph routing.
     """
     SHOW_CATALOG = "show_catalog"
     SHOW_PRODUCT_DETAIL = "show_product_detail"
@@ -45,17 +49,51 @@ class RouterResult(BaseModel):
     """
     Structured interpretation of a user message.
 
-    This output is used to drive LangGraph routing deterministically.
+    This schema represents the contract between the LLM router and the backend.
+    It is intentionally explicit to ensure deterministic and safe routing.
     """
     intent: Intent = Intent.UNKNOWN
-    product_id: Optional[int] = Field(default=None, description="3-digit product ID when applicable")
+
+    product_id: Optional[int] = Field(
+        default=None,
+        description="3-digit product ID when applicable",
+    )
     name: Optional[str] = None
     city: Optional[str] = None
-    family: Optional[list[str]] = Field(default=None, description="Olfactory family, e.g. citrus, woody, oriental, floral, aquatic, aromatic, gourmand, fruity, leather")
-    audience: Optional[str] = Field(default=None, description="Target audience: male, female, unisex")
-    max_price: Optional[float] = Field(default=None, ge=0.0, description="Maximum price in EUR")
-    min_price: Optional[float] = Field(default=None, ge=0.0, description="Minimun price in EUR")
-    language: Optional[str] = Field(default=None, description="ISO-like language hint, e.g. 'en' or 'es'")
-    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    family: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Olfactory family, e.g. citrus, woody, oriental, floral, "
+            "aquatic, aromatic, gourmand, fruity, leather"
+        ),
+    )
+    audience: Optional[str] = Field(
+        default=None,
+        description="Target audience: male, female, unisex",
+    )
+
+    max_price: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Maximum price in EUR",
+    )
+    min_price: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Minimum price in EUR",
+    )
+
+    language: Optional[str] = Field(
+        default=None,
+        description="ISO-like language hint, e.g. 'en' or 'es'",
+    )
+
+    confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Model confidence score used as a soft routing signal",
+    )
+
     actions: list[CartAction] = Field(default_factory=list)
-    

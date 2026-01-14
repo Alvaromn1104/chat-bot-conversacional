@@ -28,7 +28,9 @@ def show_catalog_node(state: ConversationState) -> ConversationState:
         lines.append(f"- [{p.id}] {brand}{p.name}{conc}{size} — €{p.price:.2f}")
 
     lines.append("")
-    lines.append(t(state, "catalog_next"))
+    next_line = t(state, "catalog_next")
+    if next_line:
+        lines.append(next_line)
 
     state.assistant_message = "\n".join(lines)
     return state
@@ -38,49 +40,39 @@ def show_product_detail_node(state: ConversationState) -> ConversationState:
     """
     Show detailed information for a selected product.
 
-    Now supports:
+    Supports:
     - by ID (301)
     - by name/brand query (e.g. "Show me Flowerbomb", "Enséñame Dolce & Gabbana")
     """
+    msg = state.user_message or ""
+
     # 1) Try ID first
-    match = re.search(r"\b(\d{3})\b", state.user_message)
+    match = re.search(r"\b(\d{3})\b", msg)
     product_id: int | None = int(match.group(1)) if match else None
 
     # 2) If no ID, try name search
     if product_id is None:
-        matches = tool_find_products_by_name(state.user_message)
+        matches = tool_find_products_by_name(msg)
 
         if len(matches) == 1:
             product_id = matches[0]
+
         elif len(matches) > 1:
-            lang = state.preferred_language or "en"
             state.candidate_products = matches
             state.pending_product_op = "detail"
 
-            lines = [
-                "He encontrado varias opciones. ¿Cuál quieres ver?"
-                if lang == "es"
-                else "I found multiple matches. Which one do you want to view?"
-            ]
+            lines = [t(state, "detail_multiple_found")]
             for i, pid in enumerate(matches, start=1):
                 p = tool_get_product(pid)
                 if p:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
 
-            lines.append(
-                "Responde con el número, el ID o el nombre."
-                if lang == "es"
-                else "Reply with the number, the ID, or the name."
-            )
-
+            lines.append(t(state, "detail_multiple_reply_hint"))
             state.assistant_message = "\n".join(lines)
             return state
+
         else:
-            state.assistant_message = (
-                "No encuentro ese producto. Dime el ID o un nombre más exacto."
-                if (state.preferred_language or "en") == "es"
-                else "I couldn't find that product. Tell me the ID or a more specific name."
-            )
+            state.assistant_message = t(state, "detail_not_found_by_name")
             return state
 
     product = tool_get_product(product_id)
@@ -106,12 +98,10 @@ def show_product_detail_node(state: ConversationState) -> ConversationState:
         lines.append(t(state, "product_size", value=product.size_ml))
     if product.family:
         lines.append(t(state, "product_family", value=product.family))
-    lang = (state.preferred_language or "en").lower()
 
     lang = (state.preferred_language or "en").lower()
 
     # ✅ descripción según idioma + fallback
-    desc = None
     if lang == "es":
         desc = product.description_es or product.description
     else:
@@ -121,8 +111,9 @@ def show_product_detail_node(state: ConversationState) -> ConversationState:
         lines.append(t(state, "product_description", value=desc))
 
     lines.append("")
-    lines.append(t(state, "product_details_next"))
+    next_line = t(state, "product_details_next")
+    if next_line:
+        lines.append(next_line)
 
     state.assistant_message = "\n".join(lines)
     return state
-

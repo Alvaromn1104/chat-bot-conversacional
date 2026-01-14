@@ -1,52 +1,46 @@
 from __future__ import annotations
 
-import logging
 from typing import Literal
 
 from app.engine.response import finalize_assistant_message
 from app.engine.state import Mode
 from app.graph.builder import build_graph
+from app.ux import t
 
 from .memory import InMemorySessionStore
 from .state import ConversationState
 
-logger = logging.getLogger(__name__)
-
-WELCOME_ES = (
-    "¡Saludos! 👋\n\n"
-    "Seré tu asistente durante tu navegación por nuestra tienda.\n"
-    "Puedes pedirme ver el catálogo, añadir perfumes al carrito o pedir recomendaciones.\n\n"
-    "¿En qué puedo ayudarte?"
-)
-
-WELCOME_EN = (
-    "Hi! 👋\n\n"
-    "I’ll be your assistant while you browse our store.\n"
-    "You can ask me to show the catalog, add perfumes to the cart, or get recommendations.\n\n"
-    "How can I help you?"
-)
-
-ENDED_ES = "Conversación finalizada. Gracias por visitarnos."
-ENDED_EN = "Conversation ended. Thank you for visiting."
-
 
 def _detect_language_switch_or_greeting(text: str) -> Literal["es", "en"] | None:
-    t = (text or "").lower().strip()
+    """
+    Lightweight heuristic to detect language preference changes or greetings.
 
-    if any(k in t for k in ["in english", "english please", "speak english"]):
+    This avoids an LLM roundtrip for trivial intents (e.g., "hello", "en español"),
+    keeping response latency low and behavior deterministic.
+    """
+    t0 = (text or "").lower().strip()
+
+    if any(k in t0 for k in ["in english", "english please", "speak english"]):
         return "en"
-    if any(k in t for k in ["en español", "en espanol", "habla español", "habla espanol"]):
+    if any(k in t0 for k in ["en español", "en espanol", "habla español", "habla espanol"]):
         return "es"
 
-    if t in {"hi", "hello", "hey"}:
+    if t0 in {"hi", "hello", "hey"}:
         return "en"
-    if t in {"hola", "buenas", "buenos dias", "buenas tardes", "buenas noches"}:
+    if t0 in {"hola", "buenas", "buenos dias", "buenas tardes", "buenas noches"}:
         return "es"
 
     return None
 
 
 class ChatEngine:
+    """
+    Orchestrates session state and routes each user turn through the LangGraph.
+
+    The engine keeps session state in an in-memory store (suitable for local/dev)
+    and reuses a single compiled graph instance across requests.
+    """
+
     def __init__(self) -> None:
         self._store = InMemorySessionStore()
         self._graph = build_graph()
@@ -56,14 +50,16 @@ class ChatEngine:
         session_id: str,
         language: Literal["es", "en"] | None = None,
     ) -> ConversationState:
+        """
+        Initialize a new session if it doesn't exist, returning the current state.
+        """
         state = self._store.get(session_id)
         if state is not None:
             return state
 
         state = ConversationState(session_id=session_id)
-        lang = language or "es"
-        state.preferred_language = lang
-        state.assistant_message = WELCOME_ES if lang == "es" else WELCOME_EN
+        state.preferred_language = language or "es"
+        state.assistant_message = t(state, "welcome")
         self._store.set(state)
         return state
 
@@ -76,20 +72,21 @@ class ChatEngine:
         postal_code: str,
         phone: str,
     ) -> ConversationState:
+        """
+        Validate and persist checkout form fields, then move the session to review.
+        """
         state = self._store.get(session_id)
         if state is None:
             state = self.start_session(session_id=session_id)
 
-        # ✅ HARD STOP si ya terminó
+        # Do not accept checkout data once the conversation has ended.
         if state.should_end or state.mode == Mode.END:
-            lang = state.preferred_language or "es"
-            state.assistant_message = ENDED_ES if lang == "es" else ENDED_EN
+            state.assistant_message = t(state, "ended")
             state.ui_show_checkout_form = False
             state.ui_form_error = None
             self._store.set(state)
             return state
 
-        lang = state.preferred_language or "es"
         state.ui_form_error = None
 
         full_name = (full_name or "").strip()
@@ -98,45 +95,25 @@ class ChatEngine:
         postal_code = (postal_code or "").strip()
         phone = (phone or "").strip()
 
+        # Basic server-side validation for required fields and numeric constraints.
         if not full_name or not address_line1 or not city or not postal_code or not phone:
-            state.ui_form_error = "Rellena todos los campos." if lang == "es" else "Please fill in all fields."
+            state.ui_form_error = t(state, "checkout_form_missing_fields_error")
             state.ui_show_checkout_form = True
-            state.assistant_message = (
-                "Ups 😅 faltan campos. Revisa el formulario y vuelve a enviarlo."
-                if lang == "es"
-                else "Oops 😅 some fields are missing. Please review the form and submit again."
-            )
+            state.assistant_message = t(state, "checkout_form_missing_fields_msg")
             self._store.set(state)
             return state
 
         if not postal_code.replace(" ", "").isdigit():
-            state.ui_form_error = (
-                "El código postal debe ser numérico."
-                if lang == "es"
-                else "Postal code must be numeric."
-            )
+            state.ui_form_error = t(state, "checkout_form_postal_numeric_error")
             state.ui_show_checkout_form = True
-            state.assistant_message = (
-                "El código postal debe ser numérico. Corrígelo en el formulario y reenvíalo."
-                if lang == "es"
-                else "Postal code must be numeric. Please fix it in the form and resubmit."
-            )
+            state.assistant_message = t(state, "checkout_form_postal_numeric_msg")
             self._store.set(state)
             return state
 
-        # ✅ NEW: validar teléfono numérico también
         if not phone.replace(" ", "").isdigit():
-            state.ui_form_error = (
-                "El teléfono debe ser numérico."
-                if lang == "es"
-                else "Phone must be numeric."
-            )
+            state.ui_form_error = t(state, "checkout_form_phone_numeric_error")
             state.ui_show_checkout_form = True
-            state.assistant_message = (
-                "El teléfono debe ser numérico. Corrígelo en el formulario y reenvíalo."
-                if lang == "es"
-                else "Phone must be numeric. Please fix it in the form and resubmit."
-            )
+            state.assistant_message = t(state, "checkout_form_phone_numeric_msg")
             self._store.set(state)
             return state
 
@@ -149,44 +126,33 @@ class ChatEngine:
         state.ui_show_checkout_form = False
         state.mode = Mode.CHECKOUT_REVIEW
 
-        if lang == "es":
-            state.assistant_message = (
-                "Perfecto ✅ Ya tengo tus datos.\n\n"
-                "Resumen del envío:\n"
-                f"- Nombre: {state.shipping.full_name}\n"
-                f"- Dirección: {state.shipping.address_line1}\n"
-                f"- Ciudad: {state.shipping.city}\n"
-                f"- CP: {state.shipping.postal_code}\n"
-                f"- Teléfono: {state.shipping.phone}\n\n"
-                "¿Confirmas el pedido? (sí/no)"
-            )
-        else:
-            state.assistant_message = (
-                "Perfect ✅ I’ve got your details.\n\n"
-                "Shipping summary:\n"
-                f"- Name: {state.shipping.full_name}\n"
-                f"- Address: {state.shipping.address_line1}\n"
-                f"- City: {state.shipping.city}\n"
-                f"- ZIP: {state.shipping.postal_code}\n"
-                f"- Phone: {state.shipping.phone}\n\n"
-                "Do you confirm the order? (yes/no)"
-            )
+        state.assistant_message = t(
+            state,
+            "checkout_review_prompt",
+            full_name=state.shipping.full_name,
+            address_line1=state.shipping.address_line1,
+            city=state.shipping.city,
+            postal_code=state.shipping.postal_code,
+            phone=state.shipping.phone,
+        )
 
         finalize_assistant_message(state)
         self._store.set(state)
         return state
 
     def process_turn(self, session_id: str, user_message: str) -> ConversationState:
+        """
+        Process a single user turn through the conversation graph.
+        """
         state = self._store.get(session_id)
         if state is None:
             state = self.start_session(session_id=session_id)
             if not (user_message or "").strip():
                 return state
 
-        # ✅ HARD STOP: no aceptar más mensajes tras END
+        # Do not process further messages after reaching an end state.
         if state.should_end or state.mode == Mode.END:
-            lang = state.preferred_language or "es"
-            state.assistant_message = ENDED_ES if lang == "es" else ENDED_EN
+            state.assistant_message = t(state, "ended")
             state.ui_show_checkout_form = False
             state.ui_form_error = None
             self._store.set(state)
@@ -197,20 +163,20 @@ class ChatEngine:
         switch_lang = _detect_language_switch_or_greeting(user_message)
         if switch_lang in ("es", "en"):
             state.preferred_language = switch_lang
-            state.assistant_message = WELCOME_ES if switch_lang == "es" else WELCOME_EN
+            state.assistant_message = t(state, "welcome")
             self._store.set(state)
             return state
 
+        # LangGraph may return either a state-like object or a raw dict; normalize to ConversationState.
         result = self._graph.invoke(state)
-
-        if isinstance(result, dict):
-            new_state = ConversationState.model_validate(result)
-        else:
-            new_state = result
+        new_state = ConversationState.model_validate(result) if isinstance(result, dict) else result
 
         finalize_assistant_message(new_state)
         self._store.set(new_state)
         return new_state
 
     def reset(self, session_id: str) -> None:
+        """
+        Clear all stored state for a session.
+        """
         self._store.reset(session_id)

@@ -37,23 +37,14 @@ def add_to_cart_node(state: ConversationState) -> ConversationState:
             state.pending_product_op = "add"
             state.pending_qty = qty
 
-            lang = state.preferred_language or "en"
-            lines = [
-                "He encontrado varias opciones. ¿A cuál te refieres?"
-                if lang == "es"
-                else "I found multiple matches. Which one did you mean?"
-            ]
+            lines = [t(state, "multiple_matches_which_add")]
 
             for i, pid in enumerate(matches, start=1):
                 p = tool_get_product(pid)
                 if p:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
 
-            lines.append(
-                "Responde con el número (1, 2…) o con el ID."
-                if lang == "es"
-                else "Reply with the option number (1, 2…) or the product ID."
-            )
+            lines.append(t(state, "reply_number_id_name"))
 
             state.assistant_message = "\n".join(lines)
             return state
@@ -156,26 +147,18 @@ def remove_from_cart_node(state: ConversationState) -> ConversationState:
             state.pending_product_op = "remove"
             state.pending_qty = qty
 
-            lang = state.preferred_language or "en"
-            lines = [
-                "He encontrado varias opciones. ¿Cuál quieres quitar?"
-                if lang == "es"
-                else "I found multiple matches. Which one do you want to remove?"
-            ]
+            lines = [t(state, "multiple_matches_which_remove")]
 
             for i, pid in enumerate(matches, start=1):
                 p = tool_get_product(pid)
                 if p:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
 
-            lines.append(
-                "Responde con el número (1, 2…) o con el ID."
-                if lang == "es"
-                else "Reply with the option number (1, 2…) or the product ID."
-            )
+            lines.append(t(state, "reply_number_id"))
 
             state.assistant_message = "\n".join(lines)
             return state
+
 
         else:
             state.assistant_message = t(state, "need_product_id_remove")

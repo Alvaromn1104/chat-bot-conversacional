@@ -13,6 +13,17 @@ def recommend_products(
     max_price: Optional[float],
     limit: int = 3,
 ) -> list[Product]:
+    """
+    Recommend products from the catalog based on user constraints.
+
+    Strategy:
+    1) Strict match: family + audience + price constraints.
+    2) Relaxed audience (male/female -> allow unisex) while keeping family + price.
+    3) No fallback to unrelated families or arbitrary "cheapest" items.
+
+    Returning an empty list is intentional: the calling node can decide how to
+    message the user (e.g., ask to relax constraints) without making assumptions.
+    """
     catalog = get_catalog()
 
     norm_families = [f.strip().lower() for f in (families or []) if (f or "").strip()]
@@ -34,12 +45,12 @@ def recommend_products(
             return False
         return True
 
-    # 1) Strict: respeta todo (families OR + audience + precio)
+    # 1) Strict: respect all constraints.
     strict = [p for p in catalog if _matches(p)]
     if strict:
         return sorted(strict, key=lambda x: x.price)[:limit]
 
-    # 2) Relax audience (si pidieron male/female, aceptamos unisex) PERO mantenemos families + precio
+    # 2) Relax audience (male/female -> allow unisex) while keeping family + price constraints.
     if audience in ("male", "female"):
         aud = audience.strip().lower()
 
@@ -56,7 +67,6 @@ def recommend_products(
         if relaxed:
             return sorted(relaxed, key=lambda x: x.price)[:limit]
 
-    # ✅ 3) NO fallback a otras familias ni “más baratos”
-    # Si no hay match, devolvemos [] y el nodo se encargará de decir:
-    # “no tenemos X en ese rango, pero sí tenemos estos X (fuera del rango)”
+    # 3) No fallback to unrelated families or arbitrary "cheapest" items.
+    # If no match exists, return [] and let the caller decide the next UX step.
     return []

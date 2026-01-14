@@ -5,21 +5,17 @@ from pathlib import Path
 from dotenv import load_dotenv
 from app.engine.service import ChatEngine
 from app.engine.state import Mode
-import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-)
 
-# Fuerza tu namespace de app a INFO (uvicorn a veces lo deja en WARNING)
-logging.getLogger("app").setLevel(logging.INFO)
-
+# Load environment variables explicitly from .env located next to this file.
+# This keeps configuration predictable during local development and testing.
 ENV_PATH = Path(__file__).resolve().with_name(".env")
 load_dotenv(ENV_PATH, override=True)
 
 app = FastAPI(title="E-commerce Cart Chatbot", version="0.1.0")
 
+# ChatEngine is instantiated once and reused across requests.
+# Session state is managed internally by the engine.
 engine = ChatEngine()
 
 class StartRequest(BaseModel):
@@ -49,10 +45,14 @@ class CheckoutFormRequest(BaseModel):
 def health():
     return {"status": "ok"}
 
+# Main chat endpoint.
+# Handles conversational turns and returns both assistant reply and UI state
+# required by the frontend (products, cart, checkout flags, etc.).
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
 
-    
+    # If the conversation has already reached an end state,
+    # return the last assistant message without processing a new turn.
     state = engine._store.get(req.session_id)
     if state and (state.should_end or state.mode == Mode.END):
         return ChatResponse(
@@ -65,6 +65,9 @@ def chat(req: ChatRequest):
         )
     state = engine.process_turn(session_id=req.session_id, user_message=req.message)
 
+    # Build UI payload expected by the frontend.
+    # This includes conversational state, cart information and
+    # flags used to control the checkout flow.
     ui_payload = {
         "products": [p.model_dump() for p in (state.ui_products or [])],
         "product": state.ui_product.model_dump() if state.ui_product else None,
@@ -78,6 +81,8 @@ def chat(req: ChatRequest):
 
     return ChatResponse(reply=state.assistant_message, ui=ui_payload)
 
+# Initializes a new chat session.
+# Optionally sets the language for the assistant on first interaction.
 @app.post("/start", response_model=ChatResponse)
 def start(req: StartRequest):
     state = engine.start_session(session_id=req.session_id, language=req.language)
@@ -95,11 +100,14 @@ def start(req: StartRequest):
 
     return ChatResponse(reply=state.assistant_message, ui=ui_payload)
 
+# Resets the session state, clearing any stored conversation or cart data.
 @app.post("/reset")
 def reset(req: ResetRequest):
     engine.reset(req.session_id)
     return {"status": "ok", "session_id": req.session_id}
 
+# Receives and processes checkout form data.
+# Validation is handled at the API layer via Pydantic models.
 @app.post("/checkout/submit", response_model=ChatResponse)
 def checkout_submit(req: CheckoutFormRequest):
     state = engine.submit_checkout_form(

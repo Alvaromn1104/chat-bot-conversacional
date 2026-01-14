@@ -71,8 +71,6 @@ def _build_system_prompt() -> str:
         "- max_price: if the user mentions a budget (e.g., under 100), set max_price.\n"
         "- min_price: if the user mentions a minimum budget (e.g., over 100, more than 80, superior a 100), set min_price.\n"
         "- price range: if the user asks for a range (e.g., between 100 and 150, entre 100 y 150, de 100 a 150), set min_price and max_price accordingly.\n\n"
-        
-        
 
         "Detect language:\n"
         "- language: \"es\" for Spanish, \"en\" for English.\n\n"
@@ -114,7 +112,12 @@ def _build_system_prompt() -> str:
 
 
 def _build_user_context(state: ConversationState) -> str:
-    # ✅ UPDATED: adapt to the new ShippingInfo fields (full_name, address_line1, city, postal_code, phone)
+    """
+    Build a compact JSON context payload for the router.
+
+    The context is intentionally minimal to reduce token usage while still
+    providing the router with flow-critical information.
+    """
     shipping = getattr(state, "shipping", None)
 
     payload = {
@@ -122,21 +125,23 @@ def _build_user_context(state: ConversationState) -> str:
         "user_message": state.user_message,
         "selected_product_id": state.selected_product_id,
         "cart_size": len(state.cart),
-
-        # ✅ keep this useful for the LLM, without breaking due to old fields
         "shipping_full_name_present": bool(getattr(shipping, "full_name", None)),
         "shipping_address_present": bool(getattr(shipping, "address_line1", None)),
         "shipping_city_present": bool(getattr(shipping, "city", None)),
         "shipping_postal_code_present": bool(getattr(shipping, "postal_code", None)),
         "shipping_phone_present": bool(getattr(shipping, "phone", None)),
-
-        # ✅ optional but handy if you're using popup UI flags
         "ui_show_checkout_form": bool(getattr(state, "ui_show_checkout_form", False)),
     }
     return json.dumps(payload, ensure_ascii=False)
 
 
 def _extract_json(text: str) -> dict[str, Any]:
+    """
+    Defensive JSON extraction from model output.
+
+    Even with structured response formatting enabled, this guards against
+    edge cases where the model returns additional text around a JSON object.
+    """
     text = (text or "").strip()
     if text.startswith("{") and text.endswith("}"):
         return json.loads(text)
@@ -148,6 +153,11 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def interpret_with_openai(state: ConversationState) -> RouterResult:
+    """
+    Run intent routing and slot extraction via OpenAI.
+
+    If OPENAI_API_KEY is not set, the router degrades gracefully to UNKNOWN.
+    """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return RouterResult(intent=Intent.UNKNOWN, confidence=0.0)

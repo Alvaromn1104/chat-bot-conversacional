@@ -4,6 +4,7 @@ import re
 from typing import Optional
 
 
+# Patterns to extract (qty, product_id) across EN/ES phrasing.
 _QTY_ID_PATTERNS: list[str] = [
     # EN: "add 2 of 310", "remove 3 x 310"
     r"\b(?P<qty>\d+)\s*(?:x|of)\s*(?P<id>\d{3})\b",
@@ -11,12 +12,18 @@ _QTY_ID_PATTERNS: list[str] = [
     r"\b(?P<qty>\d+)\s*(?:del|de)\s*(?P<id>\d{3})\b",
 ]
 
+# Product IDs are represented as 3-digit numbers in this catalog.
 _ID_ONLY_PATTERN = r"\b(?P<id>\d{3})\b"
 
 
 def parse_qty_and_product_id(text: str) -> tuple[Optional[int], Optional[int]]:
     """
-    Extract quantity + product_id when both are present.
+    Extract (qty, product_id) from free-text.
+
+    Returns:
+    - (qty, product_id) when both are present
+    - (None, product_id) when only a product id is present
+    - (None, None) when nothing matches
     """
     t = (text or "").lower()
 
@@ -34,15 +41,15 @@ def parse_qty_and_product_id(text: str) -> tuple[Optional[int], Optional[int]]:
 
 def parse_qty_only(text: str) -> Optional[int]:
     """
-    Extract a quantity from free-text when no product_id is present.
-    Rules:
-    - ignore 3-digit numbers (likely product IDs)
-    - accept 1-2 digit quantities (1..99)
-    - accept patterns like: "2", "2 unidades", "x2"
+    Extract a standalone quantity from free-text when no product_id is present.
+
+    Heuristics:
+    - only accept 1-2 digit quantities (1..99) to avoid matching 3-digit product IDs
+    - support formats like: "x2", "2 unidades", "2 units", "2 pcs", or plain "2"
     """
     t = (text or "").lower()
 
-    # "x2" or "2x"
+    # "x2"
     m = re.search(r"\bx\s*(\d{1,2})\b", t)
     if m:
         return int(m.group(1))
@@ -52,7 +59,7 @@ def parse_qty_only(text: str) -> Optional[int]:
     if m:
         return int(m.group(1))
 
-    # plain number, but NOT 3 digits (avoid product IDs)
+    # Plain number (1-2 digits).
     m = re.search(r"\b(\d{1,2})\b", t)
     if m:
         return int(m.group(1))
@@ -62,24 +69,28 @@ def parse_qty_only(text: str) -> Optional[int]:
 
 def parse_adjustment(text: str) -> tuple[Optional[int], Optional[str]]:
     """
-    Parse messages like:
+    Parse quantity adjustment requests.
+
+    Examples:
     - "mejor que sea 1"
     - "solo 1"
     - "make it 2"
     - "just 1"
     - "change it to 3"
-    Returns (target_qty, product_hint_text_or_none)
+
+    Returns:
+    - (target_qty, product_hint_text_or_none)
     """
     t = (text or "").lower().strip()
     if not t:
         return None, None
 
-    # 🔹 Intent keywords (ES + EN)
+    # Keywords indicating the user is adjusting a previously discussed quantity.
     INTENT_KEYWORDS = [
         # ES
         "mejor", "solo", "que sea", "cámbialo", "cambialo", "en vez de",
         # EN
-        "make it", "just", "only", "change it", "set it", "instead of", "better"
+        "make it", "just", "only", "change it", "set it", "instead of", "better",
     ]
 
     if not any(k in t for k in INTENT_KEYWORDS):
@@ -89,22 +100,21 @@ def parse_adjustment(text: str) -> tuple[Optional[int], Optional[str]]:
     if qty is None:
         return None, None
 
-    # remove qty token from hint
+    # Remove the quantity token from the hint text.
     hint = re.sub(rf"\b{qty}\b", " ", t)
     hint = re.sub(r"\s+", " ", hint).strip()
 
-    # 🔹 Weak words (ES + EN)
+    # Common weak words to reduce noise in the remaining hint.
     WEAK_WORDS = {
         # ES
         "mejor", "solo", "que", "sea", "sean", "cámbialo", "cambialo",
         "en", "vez", "de", "uno", "una",
         # EN
         "make", "it", "just", "only", "change", "set", "to", "instead", "of",
-        "one"
+        "one",
     }
 
     tokens = [x for x in hint.split() if x and x not in WEAK_WORDS]
     product_hint = " ".join(tokens).strip() or None
 
     return qty, product_hint
-

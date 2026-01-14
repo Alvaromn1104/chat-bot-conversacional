@@ -6,18 +6,26 @@ from typing import List, Optional
 from app.llm.router_schema import CartAction, CartOp
 
 
-# Split on common separators in EN / ES
-# Example:
-# "add 2 of 310, 1 of 302 and remove 1 of 307"
+"""
+Deterministic cart command parser (ES/EN).
+
+Parses multi-action messages such as:
+- "add 2 of 310, 1 of 302 and remove 1 of 307"
+- "añade 3 del 310 y quita 1 del 307"
+
+Supports "verb carry-over": if a fragment has no explicit operation verb,
+it inherits the last detected operation.
+"""
+
+# Split on common separators and conjunctions (ES/EN).
 _SPLIT_RE = re.compile(
-    r"(?:,|;|\n|\s+\by\b\s+|\s+\band\b\s+)",
+    r"(?:,|;|\n|\s*\by\b\s*|\s*\band\b\s*)",
     flags=re.IGNORECASE,
 )
 
-# Detect quantity + product id (quantity is optional)
-# Valid examples:
+# Detect optional quantity + product id (3 digits).
+# Examples:
 # - "3 del 310"
-# - "2 de 302"
 # - "add 2 of 310"
 # - "remove 3 x 310"
 # - "310"  -> qty defaults to 1
@@ -26,13 +34,11 @@ _QTY_ID_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
-# Keywords used to infer ADD operations
 _ADD_KEYWORDS = [
     "add", "añade", "añademe", "añádeme", "agrega", "agrégame",
     "mete", "pon", "quiero", "llévame", "lleva", "buy", "take", "purchase",
 ]
 
-# Keywords used to infer REMOVE operations
 _REMOVE_KEYWORDS = [
     "remove", "quita", "quítame", "quitame", "quiteme", "elimina", "saca",
     "borra", "delete", "drop",
@@ -41,11 +47,7 @@ _REMOVE_KEYWORDS = [
 
 def parse_cart_commands(text: str) -> List[CartAction]:
     """
-    Parse a user message into a list of cart actions (ADD / REMOVE).
-
-    This deterministic parser supports "verb carry-over":
-    if a fragment has no explicit operation verb, it inherits
-    the last detected operation.
+    Parse a user message into a list of cart actions (ADD/REMOVE).
     """
     if not text:
         return []
@@ -63,7 +65,7 @@ def parse_cart_commands(text: str) -> List[CartAction]:
 
         op = _detect_op(part)
 
-        # Carry-over rule: inherit the last operation if none is present
+        # Carry-over rule: inherit the last operation if none is present.
         if op is None:
             op = last_op
         else:
@@ -88,9 +90,7 @@ def parse_cart_commands(text: str) -> List[CartAction]:
 
 
 def _detect_op(fragment: str) -> Optional[CartOp]:
-    """
-    Detect whether a fragment represents an ADD or REMOVE operation.
-    """
+    """Infer whether a fragment represents an ADD or REMOVE operation."""
     if any(k in fragment for k in _REMOVE_KEYWORDS):
         return CartOp.REMOVE
     if any(k in fragment for k in _ADD_KEYWORDS):
@@ -99,14 +99,11 @@ def _detect_op(fragment: str) -> Optional[CartOp]:
 
 
 def _extract_qty_and_id(fragment: str) -> tuple[Optional[int], Optional[int]]:
-    """
-    Extract quantity and product id from a text fragment.
-    """
+    """Extract (qty, product_id) from a text fragment."""
     m = _QTY_ID_RE.search(fragment)
     if not m:
         return None, None
 
     qty = int(m.group("qty")) if m.group("qty") else None
     product_id = int(m.group("id"))
-
     return qty, product_id

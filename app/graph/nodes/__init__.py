@@ -5,7 +5,6 @@ from .checkout import (
     checkout_confirm_node,
     handle_checkout_confirmation_node,
     handle_checkout_review_node,
-    collect_shipping_node,
 )
 from .recommend import recommend_product_node
 from .interpret import interpret_user_node
@@ -23,8 +22,7 @@ __all__ = [
     "remove_from_cart_node",
     "checkout_confirm_node",
     "handle_checkout_confirmation_node",
-    "handle_checkout_review_node",  # ✅ NEW
-    "collect_shipping_node",
+    "handle_checkout_review_node",
     "recommend_product_node",
     "interpret_user_node",
     "bulk_cart_update_node",

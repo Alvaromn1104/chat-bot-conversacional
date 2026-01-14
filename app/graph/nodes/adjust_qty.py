@@ -13,13 +13,17 @@ from app.utils import parse_adjustment
 from app.ux import t
 
 
+def _norm(text: str | None) -> str:
+    return (text or "").strip().casefold()
+
+
 def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
     """
     Accepts:
     - product id: "319"
     - option number: "1" / "2"
     """
-    tt = (text or "").strip().lower()
+    tt = _norm(text)
 
     m_id = re.search(r"\b(\d{3})\b", tt)
     if m_id:
@@ -35,6 +39,17 @@ def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
     return None
 
 
+def _ask_pick_one(state: ConversationState, header_key: str, candidates: list[int]) -> None:
+    lines = [t(state, header_key)]
+    for i, pid in enumerate(candidates, start=1):
+        p = tool_get_product(pid)
+        if p:
+            lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
+    lines.append(t(state, "pick_number_id_or_name"))
+    state.assistant_message = "\n".join(lines)
+
+
+
 def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
     lang = state.preferred_language or "en"
 
@@ -44,16 +59,12 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
     if state.pending_product_op == "set_qty" and state.candidate_products:
         target_qty = state.pending_qty
         if target_qty is None:
-            state.assistant_message = "Vale." if lang == "es" else "Okay."
+            state.assistant_message = t(state, "fallback_ok")
             return state
 
         chosen = _parse_choice_to_product_id(state.user_message, state.candidate_products)
         if chosen is None:
-            state.assistant_message = (
-                "Responde con el número, el ID o el nombre."
-                if lang == "es"
-                else "Reply with the number, the ID, or the name."
-            )
+            state.assistant_message = t(state, "pick_number_id_or_name")
             return state
 
         product_id = chosen
@@ -70,11 +81,7 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
 
         ok, new_qty = tool_set_cart_qty(state, product_id, target_qty)
         if not ok:
-            state.assistant_message = (
-                "No he podido actualizar la cantidad."
-                if lang == "es"
-                else "I couldn't update the quantity."
-            )
+            state.assistant_message = t(state, "qty_update_failed")
             return state
 
         total = tool_cart_total(state)
@@ -88,10 +95,14 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
         state.last_cart_op = "set_qty"
         state.last_cart_qty = new_qty
 
-        state.assistant_message = (
-            f"Perfecto ✅ Dejé [{product.id}] {product.brand} - {product.name} en {new_qty} unidad(es).\n\nTotal: €{total:.2f}"
-            if lang == "es"
-            else f"Done ✅ Set [{product.id}] {product.brand} - {product.name} to {new_qty} unit(s).\n\nTotal: €{total:.2f}"
+        state.assistant_message = t(
+            state,
+            "qty_set_ok",
+            product_id=product.id,
+            brand=product.brand or "",
+            name=product.name,
+            qty=new_qty,
+            total=total,
         )
         return state
 
@@ -100,7 +111,7 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
     # --------------------------------------------------
     target_qty, hint = parse_adjustment(state.user_message)
     if target_qty is None:
-        state.assistant_message = "Vale." if lang == "es" else "Okay."
+        state.assistant_message = t(state, "fallback_ok")
         return state
 
     product_id: int | None = None
@@ -116,30 +127,12 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
             state.pending_product_op = "set_qty"
             state.pending_qty = target_qty
 
-            lines = [
-                "He encontrado varias opciones. ¿Cuál quieres ajustar?"
-                if lang == "es"
-                else "I found multiple matches. Which one do you want to adjust?"
-            ]
-
-            for i, pid in enumerate(matches, start=1):
-                p = tool_get_product(pid)
-                if p:
-                    lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
-
-            lines.append(
-                "Responde con el número, el ID o el nombre."
-                if lang == "es"
-                else "Reply with the number, the ID, or the name."
-            )
-
-            state.assistant_message = "\n".join(lines)
+            _ask_pick_one(state, "adjust_multiple_found", matches)
             return state
 
         else:
-            # ✅ FIX: if hint is garbage (e.g. "sean"), fall back to last_cart_product_ids
+            # ✅ if hint is garbage (e.g. "sean"), fall back to last_cart_product_ids
             hint = None
-                
 
     if product_id is None:
         if len(state.last_cart_product_ids) == 1:
@@ -150,32 +143,11 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
             state.pending_product_op = "set_qty"
             state.pending_qty = target_qty
 
-            lines = [
-                "¿A cuál de estos productos te refieres?"
-                if lang == "es"
-                else "Which of these products do you mean?"
-            ]
-
-            for i, pid in enumerate(state.last_cart_product_ids, start=1):
-                p = tool_get_product(pid)
-                if p:
-                    lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
-
-            lines.append(
-                "Responde con el número, el ID o el nombre."
-                if lang == "es"
-                else "Reply with the number, the ID, or the name."
-            )
-
-            state.assistant_message = "\n".join(lines)
+            _ask_pick_one(state, "adjust_which_of_these", state.last_cart_product_ids)
             return state
 
         else:
-            state.assistant_message = (
-                "¿De qué producto hablamos? Dime el ID o el nombre."
-                if lang == "es"
-                else "Which product do you mean? Tell me the ID or the name."
-            )
+            state.assistant_message = t(state, "need_product_id_or_name")
             return state
 
     product = tool_get_product(product_id)
@@ -185,11 +157,7 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
 
     ok, new_qty = tool_set_cart_qty(state, product_id, target_qty)
     if not ok:
-        state.assistant_message = (
-            "No he podido actualizar la cantidad."
-            if lang == "es"
-            else "I couldn't update the quantity."
-        )
+        state.assistant_message = t(state, "qty_update_failed")
         return state
 
     total = tool_cart_total(state)
@@ -203,10 +171,13 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
     state.last_cart_op = "set_qty"
     state.last_cart_qty = new_qty
 
-    state.assistant_message = (
-        f"Perfecto ✅ Dejé [{product.id}] {product.brand} - {product.name} en {new_qty} unidad(es).\n\nTotal: €{total:.2f}"
-        if lang == "es"
-        else f"Done ✅ Set [{product.id}] {product.brand} - {product.name} to {new_qty} unit(s).\n\nTotal: €{total:.2f}"
+    state.assistant_message = t(
+        state,
+        "qty_set_ok",
+        product_id=product.id,
+        brand=product.brand or "",
+        name=product.name,
+        qty=new_qty,
+        total=total,
     )
-
     return state

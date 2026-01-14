@@ -3,6 +3,14 @@ from .cart_commands import parse_cart_commands
 from .cart_commands_by_name import parse_cart_commands_by_name
 from .recommend_parsing import parse_recommend_slots
 
+"""
+Utility parsing helpers used across routing rules and tools.
+
+This module exposes a curated set of deterministic parsers for extracting
+quantities, product identifiers, cart commands, and recommendation slots
+from user input.
+"""
+
 __all__ = [
     "parse_qty_and_product_id",
     "parse_cart_commands",

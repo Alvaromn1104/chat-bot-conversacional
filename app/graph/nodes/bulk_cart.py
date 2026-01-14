@@ -40,23 +40,18 @@ def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
 def bulk_cart_update_node(state: ConversationState) -> ConversationState:
     actions: List[CartAction] = state.pending_actions or []
 
-    # ✅ NEW: if we are resolving a previous bulk clarification (user answered "1/2/315")
-    pending_bulk_op = getattr(state, "pending_bulk_op", None)
-    pending_bulk_qty = getattr(state, "pending_bulk_qty", None)
+    # --------------------------------------------------
+    # 0) Resolving a previous bulk clarification
+    # --------------------------------------------------
+    pending_bulk_op = state.pending_bulk_op
+    pending_bulk_qty = state.pending_bulk_qty
 
     if pending_bulk_op and state.candidate_products:
         product_id = _parse_choice_to_product_id(state.user_message, state.candidate_products)
         if product_id is None:
-            lang = state.preferred_language or "en"
-            lines = [
-                "Responde con el número (1, 2…) o con el ID."
-                if lang == "es"
-                else "Reply with the option number (1, 2…) or the product ID."
-            ]
-            state.assistant_message = "\n".join(lines)
+            state.assistant_message = t(state, "bulk_reply_number_id")
             return state
 
-        # convert to action and continue
         op = CartOp(pending_bulk_op)
         qty = int(pending_bulk_qty or 1)
         actions.append(CartAction(op=op, product_id=product_id, qty=qty))
@@ -66,69 +61,56 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
         state.pending_bulk_op = None
         state.pending_bulk_qty = None
 
-    # ✅ NEW: resolve pending_name_actions (created in interpret_user)
+    # --------------------------------------------------
+    # 1) Resolve pending_name_actions (created by parser)
+    # --------------------------------------------------
+    # ✅ resolve pending_name_actions as a QUEUE (do not lose remaining actions)
     pending_name_actions = getattr(state, "pending_name_actions", None) or []
-    if pending_name_actions:
-        # clear it to avoid loops
-        state.pending_name_actions = []
+    while pending_name_actions:
+        packed = pending_name_actions.pop(0)  # consume 1
 
-        for packed in pending_name_actions:
-            # format: "add|2|tom ford ombre"
-            try:
-                op_s, qty_s, hint = packed.split("|", 2)
-                op = CartOp(op_s)
-                qty = int(qty_s)
-            except Exception:
-                continue
+        # persist the remainder in state in case we need to return early
+        state.pending_name_actions = pending_name_actions
 
-            matches = tool_find_products_by_name(hint)
+        try:
+            op_s, qty_s, hint = packed.split("|", 2)
+            op = CartOp(op_s)
+            qty = int(qty_s)
+        except Exception:
+            continue
 
-            if len(matches) == 1:
-                actions.append(CartAction(op=op, product_id=matches[0], qty=qty))
-                continue
+        matches = tool_find_products_by_name(hint)
 
-            if len(matches) > 1:
-                # Ask clarification, but ✅ KEEP actions so far
-                state.candidate_products = matches
-                state.pending_bulk_op = op.value
-                state.pending_bulk_qty = qty
+        if len(matches) == 1:
+            actions.append(CartAction(op=op, product_id=matches[0], qty=qty))
+            continue
 
-                lang = state.preferred_language or "en"
-                lines = [
-                    "He encontrado varias opciones. ¿A cuál te refieres?"
-                    if lang == "es"
-                    else "I found multiple matches. Which one did you mean?"
-                ]
-                for i, pid in enumerate(matches, start=1):
-                    p = tool_get_product(pid)
-                    if p:
-                        lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
-                lines.append(
-                    "Responde con el número (1, 2…) o con el ID."
-                    if lang == "es"
-                    else "Reply with the option number (1, 2…) or the product ID."
-                )
+        if len(matches) > 1:
+            # Ask clarification, ✅ KEEP actions resolved so far AND keep remaining name actions
+            state.candidate_products = matches
+            state.pending_bulk_op = op.value
+            state.pending_bulk_qty = qty
 
-                # ✅ IMPORTANT: store actions already resolved so they survive next turn
-                state.pending_actions = actions
+            lines = [t(state, "multiple_matches_which_add")]
+            for i, pid in enumerate(matches, start=1):
+                p = tool_get_product(pid)
+                if p:
+                    lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
+            lines.append(t(state, "reply_number_id"))
 
-                state.assistant_message = "\n".join(lines)
-                return state
-
-            # no match
-            state.assistant_message = t(state, "bulk_none")
+            state.pending_actions = actions  # keep resolved actions so far
+            state.assistant_message = "\n".join(lines)
             return state
 
-    # ✅ IMPORTANT: now that we’re done resolving, clear pending_actions
-    state.pending_actions = []
-
-    if not actions:
+        # no match -> stop and inform (optional: you could continue instead)
         state.assistant_message = t(state, "bulk_none")
         return state
 
+    # --------------------------------------------------
+    # 2) Apply actions
+    # --------------------------------------------------
     in_cart: Dict[int, int] = {item.product_id: item.qty for item in state.cart}
     lines: List[str] = []
-
     affected: list[int] = []
 
     for a in actions:
@@ -208,5 +190,7 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
 
     if affected:
         state.last_cart_product_ids = list(dict.fromkeys(affected))
+        state.selected_product_id = state.last_cart_product_ids[-1]
+
 
     return state

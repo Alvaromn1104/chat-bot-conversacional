@@ -11,16 +11,21 @@ from app.tools import (
     tool_set_cart_qty,
     tool_cart_total,
 )
+from app.ux import t
+
+
+def _norm(text: str | None) -> str:
+    return (text or "").strip().casefold()
 
 
 def _parse_choice(text: str) -> Optional[int]:
-    t = (text or "").strip().lower()
+    tt = _norm(text)
 
-    m = re.search(r"\b(\d{3})\b", t)
+    m = re.search(r"\b(\d{3})\b", tt)
     if m:
         return int(m.group(1))
 
-    m2 = re.search(r"\b(\d+)\b", t)
+    m2 = re.search(r"\b(\d+)\b", tt)
     if m2:
         return int(m2.group(1))
 
@@ -28,11 +33,11 @@ def _parse_choice(text: str) -> Optional[int]:
 
 
 def _pick_candidate_by_text(text: str, candidate_ids: list[int]) -> Optional[int]:
-    q = (text or "").lower().strip()
+    q = _norm(text)
     if not q:
         return None
 
-    tokens = [t for t in re.split(r"\s+", q) if t]
+    tokens = [x for x in re.split(r"\s+", q) if x]
     if not tokens:
         return None
 
@@ -41,7 +46,7 @@ def _pick_candidate_by_text(text: str, candidate_ids: list[int]) -> Optional[int
         p = tool_get_product(pid)
         if not p:
             continue
-        hay = f"{p.brand or ''} {p.name}".lower()
+        hay = f"{p.brand or ''} {p.name}".casefold()
         score = sum(1 for tok in tokens if tok in hay)
         if score > 0:
             scored.append((score, pid))
@@ -56,14 +61,20 @@ def _pick_candidate_by_text(text: str, candidate_ids: list[int]) -> Optional[int
     return best[0] if len(best) == 1 else None
 
 
+def _get_description_for_lang(state: ConversationState, product) -> str | None:
+    lang = (state.preferred_language or "en").lower()
+    if lang == "es":
+        return getattr(product, "description_es", None) or getattr(product, "description", None)
+    return getattr(product, "description", None) or getattr(product, "description_es", None)
+
+
 def resolve_product_choice_node(state: ConversationState) -> ConversationState:
-    lang = state.preferred_language or "en"
     candidates = state.candidate_products or []
     op = state.pending_product_op
     qty = state.pending_qty or 1
 
     if not candidates or not op:
-        state.assistant_message = "Vale." if lang == "es" else "Okay."
+        state.assistant_message = t(state, "fallback_ok")
         return state
 
     choice = _parse_choice(state.user_message)
@@ -71,149 +82,166 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
     if choice is None:
         picked = _pick_candidate_by_text(state.user_message, candidates)
         if picked is None:
-            state.assistant_message = (
-                "¿Cuál quieres? Responde con el número, el ID o el nombre."
-                if lang == "es"
-                else "Which one do you want? Reply with the number, ID, or name."
-            )
+            # ✅ UX: lista opciones SIEMPRE cuando hay ambigüedad
+            header_key = {
+                "add": "multiple_matches_which_add",
+                "remove": "multiple_matches_which_remove",
+                "set_qty": "multiple_matches_which_adjust",
+                "detail": "detail_multiple_found",
+            }.get(op, "clarify_pick_one")
+
+            lines = [t(state, header_key)]
+            for i, pid in enumerate(candidates, start=1):
+                p = tool_get_product(pid)
+                if p:
+                    lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
+
+            # copy final según operación (ya los tienes definidos)
+            if op == "detail":
+                lines.append(t(state, "detail_multiple_reply_hint"))
+            elif op == "add":
+                lines.append(t(state, "reply_number_id_name"))
+            else:
+                lines.append(t(state, "reply_number_id"))
+
+            state.assistant_message = "\n".join(lines)
             return state
+
         choice = picked
 
+    # choice as product id vs option number
     if 100 <= choice <= 999:
         if choice not in candidates:
-            state.assistant_message = (
-                "Ese ID no está entre las opciones."
-                if lang == "es"
-                else "That ID is not among the options."
-            )
+            state.assistant_message = t(state, "clarify_id_not_in_options")
             return state
         product_id = choice
     else:
         idx = choice - 1
         if idx < 0 or idx >= len(candidates):
-            state.assistant_message = (
-                "Ese número no es válido."
-                if lang == "es"
-                else "That number is invalid."
-            )
+            state.assistant_message = t(state, "clarify_invalid_number")
             return state
         product_id = candidates[idx]
 
     product = tool_get_product(product_id)
     if not product:
-        state.assistant_message = (
-            f"No encuentro el producto {product_id}."
-            if lang == "es"
-            else f"I couldn't find product {product_id}."
-        )
+        state.assistant_message = t(state, "product_not_found", product_id=product_id)
         return state
 
-    # 🔥 LIMPIEZA DE ESTADO (MUY IMPORTANTE)
+    # 🔥 limpiar estado de clarificación (antes de responder)
     state.candidate_products = []
     state.pending_product_op = None
     state.pending_qty = None
 
+    # ✅ mantener “contexto activo” del producto para siguientes turnos tipo "añade 2" / "quítame 1"
+    state.selected_product_id = product.id
+
+    product_label = f"[{product.id}] {product.brand} - {product.name}"
+
     # ===============================
-    # 🆕 NUEVO: DETALLE DE PRODUCTO
+    # detail
     # ===============================
     if op == "detail":
         state.mode = Mode.CATALOG
-        state.selected_product_id = product.id
         state.ui_product = product
         state.ui_products = []
         state.ui_cart_total = None
 
         lines = [
-            f"Detalles del producto [{product.id}] {product.brand} - {product.name}:"
-            if lang == "es"
-            else f"Product details for [{product.id}] {product.brand} - {product.name}:",
-            f"- Precio: €{product.price:.2f}"
-            if lang == "es"
-            else f"- Price: €{product.price:.2f}",
+            t(state, "product_details_header", product_label=product_label),
+            t(state, "product_price", price=product.price),
         ]
 
         if product.concentration:
-            lines.append(
-                f"- Concentración: {product.concentration}"
-                if lang == "es"
-                else f"- Concentration: {product.concentration}"
-            )
+            lines.append(t(state, "product_concentration", value=product.concentration))
         if product.size_ml:
-            lines.append(
-                f"- Tamaño: {product.size_ml} ml"
-                if lang == "es"
-                else f"- Size: {product.size_ml} ml"
-            )
+            lines.append(t(state, "product_size", value=product.size_ml))
         if product.family:
-            lines.append(
-                f"- Familia olfativa: {product.family}"
-                if lang == "es"
-                else f"- Olfactory family: {product.family}"
-            )
-        if product.description:
-            lines.append(
-                f"- Descripción: {product.description}"
-                if lang == "es"
-                else f"- Description: {product.description}"
-            )
+            lines.append(t(state, "product_family", value=product.family))
+
+        desc = _get_description_for_lang(state, product)
+        if desc:
+            lines.append(t(state, "product_description", value=desc))
 
         lines.append("")
-        lines.append(
-            'Puedes decir: "Añádelo al carrito" o "Volver al catálogo".'
-            if lang == "es"
-            else 'You can say: "Add it to the cart" or "Back to catalog".'
-        )
+        lines.append(t(state, "clarify_detail_next"))
 
         state.assistant_message = "\n".join(lines)
         return state
 
     # ===============================
-    # RESTO: add / remove / set_qty
+    # add / remove / set_qty
     # ===============================
     if op == "add":
         ok, added = tool_add_to_cart(state, product_id, qty)
         if not ok:
-            state.assistant_message = "Sin stock."
+            state.assistant_message = t(state, "add_no_stock", product_label=product_label)
             return state
 
         total = tool_cart_total(state)
         state.mode = Mode.CART
-        state.assistant_message = (
-            f"Añadido ✅ [{product.id}] {product.name} x{added}\nTotal: €{total:.2f}"
-            if lang == "es"
-            else f"Added ✅ [{product.id}] {product.name} x{added}\nTotal: €{total:.2f}"
+        state.ui_cart_total = total
+
+        # ✅ contexto para próximos turnos
+        state.last_cart_product_ids = [product_id]
+        state.last_cart_op = "add"
+        state.last_cart_qty = added
+
+        state.assistant_message = t(
+            state,
+            "clarify_added",
+            product_label=product_label,
+            qty=added,
+            total=total,
         )
         return state
 
     if op == "remove":
         ok, removed = tool_remove_from_cart(state, product_id, qty)
         if not ok:
-            state.assistant_message = "No estaba en el carrito."
+            state.assistant_message = t(state, "clarify_not_in_cart")
             return state
 
         total = tool_cart_total(state)
         state.mode = Mode.CART
-        state.assistant_message = (
-            f"Quitado ✅ [{product.id}] {product.name}\nTotal: €{total:.2f}"
-            if lang == "es"
-            else f"Removed ✅ [{product.id}] {product.name}\nTotal: €{total:.2f}"
+        state.ui_cart_total = total
+
+        # ✅ contexto para próximos turnos
+        state.last_cart_product_ids = [product_id]
+        state.last_cart_op = "remove"
+        state.last_cart_qty = removed
+
+        state.assistant_message = t(
+            state,
+            "clarify_removed",
+            product_label=product_label,
+            qty=removed,
+            total=total,
         )
         return state
 
     if op == "set_qty":
         ok, new_qty = tool_set_cart_qty(state, product_id, qty)
         if not ok:
-            state.assistant_message = "No pude actualizar la cantidad."
+            state.assistant_message = t(state, "clarify_set_qty_failed")
             return state
 
         total = tool_cart_total(state)
         state.mode = Mode.CART
-        state.assistant_message = (
-            f"Cantidad actualizada ✅ [{product.id}] x{new_qty}\nTotal: €{total:.2f}"
-            if lang == "es"
-            else f"Quantity updated ✅ [{product.id}] x{new_qty}\nTotal: €{total:.2f}"
+        state.ui_cart_total = total
+
+        # ✅ contexto para próximos turnos
+        state.last_cart_product_ids = [product_id]
+        state.last_cart_op = "set_qty"
+        state.last_cart_qty = new_qty
+
+        state.assistant_message = t(
+            state,
+            "clarify_qty_updated",
+            product_label=product_label,
+            qty=new_qty,
+            total=total,
         )
         return state
 
-    state.assistant_message = "Vale." if lang == "es" else "Okay."
+    state.assistant_message = t(state, "fallback_ok")
     return state

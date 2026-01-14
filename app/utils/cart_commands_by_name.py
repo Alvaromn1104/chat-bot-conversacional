@@ -5,29 +5,49 @@ from typing import Optional
 
 from app.llm.router_schema import CartAction, CartOp
 
+
+"""
+Deterministic cart command parsing by name and/or product id.
+
+This parser supports multi-action messages (ES/EN), splitting the input into
+segments and extracting cart operations as either:
+- actions_with_ids: operations already resolved by a 3-digit product id
+- name_actions: operations that require name resolution via search
+"""
+
+# Split input on common separators (punctuation, newline, and ES/EN conjunctions).
 _SPLIT_RE = re.compile(r"(?:,|;|\n|\s+\by\b\s+|\s+\band\b\s+)", flags=re.IGNORECASE)
 
+# Keywords used to infer cart operation from natural language fragments.
 _ADD_KEYWORDS = [
     "add", "añade", "anade", "añadir", "agrega", "mete", "pon", "quiero", "buy", "take", "purchase",
     "añademe", "añádeme", "anademe", "añadme", "anadme",
-    "agregame", "agrégame","meteme","agregame","agrégame"
+    "agregame", "agrégame", "meteme", "agregame", "agrégame",
 ]
-_REMOVE_KEYWORDS = ["remove", "quita", "quitar", "quítame", "quitame", "elimina", "saca", "borra", "delete", "drop"]
+_REMOVE_KEYWORDS = [
+    "remove", "quita", "quitar", "quítame", "quitame", "elimina", "saca", "borra", "delete", "drop",
+]
 
-
+# Product IDs are represented as 3-digit numbers in this catalog.
 _ID_RE = re.compile(r"\b(?P<id>\d{3})\b", flags=re.IGNORECASE)
+
 
 def parse_cart_commands_by_name(text: str) -> tuple[list[CartAction], list[tuple[CartOp, int, str]]]:
     """
+    Parse cart operations from a user message.
+
     Returns:
-      - actions_with_ids: list[CartAction]  (already resolved by 3-digit IDs)
-      - name_actions: list[(op, qty, name_hint_text)]  (need resolution by search)
+      - actions_with_ids: list[CartAction]
+        Operations already resolved via a 3-digit product id.
+
+      - name_actions: list[(op, qty, name_hint_text)]
+        Operations that require name-based resolution via search.
     """
     if not text:
         return [], []
 
-    t = text.lower()
-    parts = _SPLIT_RE.split(t)
+    lower_text = text.lower()
+    parts = _SPLIT_RE.split(lower_text)
 
     actions_with_ids: list[CartAction] = []
     name_actions: list[tuple[CartOp, int, str]] = []
@@ -39,6 +59,7 @@ def parse_cart_commands_by_name(text: str) -> tuple[list[CartAction], list[tuple
         if not part:
             continue
 
+        # If the fragment doesn't contain an explicit op, reuse the last detected op.
         op = _detect_op(part)
         if op is None:
             op = last_op
@@ -48,7 +69,7 @@ def parse_cart_commands_by_name(text: str) -> tuple[list[CartAction], list[tuple
         if op is None:
             continue
 
-        # If contains a 3-digit id, treat as ID action
+        # If a 3-digit product id is present, treat the action as already resolved.
         m_id = _ID_RE.search(part)
         if m_id:
             pid = int(m_id.group("id"))
@@ -56,9 +77,10 @@ def parse_cart_commands_by_name(text: str) -> tuple[list[CartAction], list[tuple
             actions_with_ids.append(CartAction(op=op, product_id=pid, qty=qty))
             continue
 
-        # Otherwise, treat as name hint action
+        # Otherwise, interpret the fragment as a name-based hint.
         qty = _extract_qty(part) or 1
-        # remove obvious op words + qty so the hint is cleaner
+
+        # Remove obvious op words and numeric tokens to keep the hint clean for search.
         hint = re.sub(r"\b\d+\b", " ", part)
         for k in _ADD_KEYWORDS + _REMOVE_KEYWORDS:
             hint = hint.replace(k, " ")
@@ -71,6 +93,9 @@ def parse_cart_commands_by_name(text: str) -> tuple[list[CartAction], list[tuple
 
 
 def _detect_op(fragment: str) -> Optional[CartOp]:
+    """
+    Infer the cart operation (add/remove) from a text fragment.
+    """
     if any(k in fragment for k in _REMOVE_KEYWORDS):
         return CartOp.REMOVE
     if any(k in fragment for k in _ADD_KEYWORDS):
@@ -79,5 +104,8 @@ def _detect_op(fragment: str) -> Optional[CartOp]:
 
 
 def _extract_qty(fragment: str) -> Optional[int]:
+    """
+    Extract a 1-2 digit quantity from the fragment (if present).
+    """
     m = re.search(r"\b(\d{1,2})\b", fragment)
     return int(m.group(1)) if m else None

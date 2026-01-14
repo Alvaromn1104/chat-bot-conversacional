@@ -3,6 +3,12 @@ from .cart_tools import tool_add_to_cart, tool_cart_total, tool_remove_from_cart
 from .recommend_tools import tool_recommend_products
 from .search_tools import tool_find_products_by_name
 
+"""
+Public tool interface used by the conversational engine and graph nodes.
+
+This module exposes a curated set of deterministic helper functions ("tools")
+that operate on the conversation state and domain services.
+"""
 
 
 __all__ = [
