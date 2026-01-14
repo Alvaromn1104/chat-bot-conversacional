@@ -9,14 +9,16 @@ El proyecto está diseñado con un enfoque **práctico y mantenible**, combinand
 ## 🚀 Instalación y ejecución
 
 ### Requisitos
+
 - Python 3.10 o superior
 - `pip`
 
 ### Instalación de dependencias
-```bash```
+
 pip install -r requirements.txt
 
 ### Variables de entorno (opcional)
+
 LLM_ROUTER_ENABLED=false
 OPENAI_API_KEY=your_api_key_here
 Por defecto, el proyecto funciona sin LLM.
@@ -58,6 +60,7 @@ Proceso de compra guiado mediante un flujo de estado que incluye:
 
 
 ## 🧠 Uso de LLM (opcional)
+
 El sistema puede utilizar un LLM de OpenAI para clasificación de intención y extracción de slots. Este comportamiento es opcional y está desactivado por defecto.
 
 ### Variables relevantes:
@@ -70,10 +73,12 @@ OPENAI_MODEL=gpt-4.1-mini
 LLM_MIN_CONFIDENCE=0.3
 
 ## 🧪 Tests
+
 El proyecto incluye tests automatizados que cubren los flujos principales de catálogo, carrito y checkout.
 pytest -q
 
 ## 💬 Ejemplos de uso
+
 Consulta de Capacidades
 
 Usuario: ¿Qué puedes hacer?
@@ -90,18 +95,12 @@ Checkout (Validación)
 
 Usuario: Finalizar compra
 
-Bot: Por favor, introduce tu email para el envío.
-
-Usuario: correo_falso
-
-Bot: Lo siento, el email no parece válido. Por favor, asegúrate de incluir un formato correcto (ejemplo@dominio.com).
-
 ## 🧠 Visión general de la arquitectura
 
-Motor conversacional basado en LangGraph para gestionar el estado del formulario y el carrito.
+- Motor conversacional basado en LangGraph para gestionar el estado del formulario y el carrito.
 
-Parsers deterministas para asegurar precisión en IDs y precios.
+- Parsers deterministas para asegurar precisión en IDs y precios.
 
-Servicios de dominio independientes (Catalog, Cart, Order).
+- Servicios de dominio independientes (Catalog, Cart, Order).
 
-Capa UX centralizada para una voz de marca consistente.
+- Capa UX centralizada para una voz de marca consistente.
