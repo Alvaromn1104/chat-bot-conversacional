@@ -35,29 +35,29 @@ Este archivo permite interactuar con el motor (LangGraph + reglas + LLM opcional
 Para ejecutarlo:
 
 python gradio_chat.py
-✨ Funcionalidades Principales
-🛍️ Gestión de Catálogo e Inteligencia
-Recomendaciones Avanzadas: Filtra productos por aroma, rango de precio o público objetivo (hombre, mujer, unisex).
 
-Auto-asistencia: Si preguntas "¿Qué puedes hacer?", el bot detalla todas sus capacidades y comandos disponibles.
+## ✨ Funcionalidades Principales
 
-🛒 Carrito de Compra
-Añadir/Quitar productos por ID o nombre.
+### 🛍️ Gestión de Catálogo e Inteligencia
+- **Recomendaciones avanzadas**: Filtra productos por aroma, rango de precio o público objetivo (hombre, mujer, unisex).
+- **Auto-asistencia**: Si preguntas _"¿Qué puedes hacer?"_, el bot detalla todas sus capacidades y comandos disponibles.
 
-Modificación de cantidades.
+### 🛒 Carrito de Compra
+- Añadir / quitar productos por **ID o nombre**.
+- Modificación de cantidades.
+- Resumen detallado del total acumulado.
 
-Resumen detallado del total acumulado.
-
-💳 Checkout con Formulario Dinámico
+### 💳 Checkout con Formulario Dinámico
 Proceso de compra guiado mediante un flujo de estado que incluye:
+- Recolección de datos de envío y contacto.
+- Validaciones integradas:
+  - Formato de email
+  - Códigos postales
+  - Campos obligatorios
+- Confirmación final antes de procesar el pedido.
 
-Recolección de datos de envío y contacto.
 
-Validaciones integradas: Verificación de formato de email, códigos postales y campos obligatorios directamente en la conversación.
-
-Confirmación final antes de procesar el pedido.
-
-🧠 Uso de LLM (opcional)
+## 🧠 Uso de LLM (opcional)
 El sistema puede utilizar un LLM de OpenAI para clasificación de intención y extracción de slots. Este comportamiento es opcional y está desactivado por defecto.
 
 ### Variables relevantes:
@@ -68,11 +68,12 @@ LLM_ROUTER_ENABLED=true
 OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-4.1-mini
 LLM_MIN_CONFIDENCE=0.3
-### 🧪 Tests
-El proyecto incluye tests automatizados que cubren los flujos principales de catálogo, carrito y checkout.
 
+## 🧪 Tests
+El proyecto incluye tests automatizados que cubren los flujos principales de catálogo, carrito y checkout.
 pytest -q
-### 💬 Ejemplos de uso
+
+## 💬 Ejemplos de uso
 Consulta de Capacidades
 
 Usuario: ¿Qué puedes hacer?
@@ -95,7 +96,8 @@ Usuario: correo_falso
 
 Bot: Lo siento, el email no parece válido. Por favor, asegúrate de incluir un formato correcto (ejemplo@dominio.com).
 
-### 🧠 Visión general de la arquitectura
+## 🧠 Visión general de la arquitectura
+
 Motor conversacional basado en LangGraph para gestionar el estado del formulario y el carrito.
 
 Parsers deterministas para asegurar precisión en IDs y precios.
