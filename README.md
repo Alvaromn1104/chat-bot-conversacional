@@ -176,6 +176,10 @@ Aunque se trata de una prueba técnica, el backend está estructurado con criter
 - Estados limpiados explícitamente para evitar efectos colaterales entre turnos.
 - Arquitectura fácilmente extensible a nuevos intents, idiomas o canales (chat, API, UI).
 
+📄 Para un análisis más detallado del diseño y del flujo conversacional basado en LangGraph, puede consultarse el documento  
+**`docs/Arquitectura_Chatbot_Langraph.pdf`**, donde se describe la arquitectura del bot en mayor profundidad.
+
+
 ---
 
 
