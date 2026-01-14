@@ -28,15 +28,21 @@ Por defecto, el proyecto funciona sin LLM.
 uvicorn app.main:app --reload
 El servicio quedará disponible en: http://localhost:8000
 
-## Demo interactiva (Gradio)
+## 📟 Demo interactiva (Gradio)
 
-El repositorio incluye un frontend ligero en `gradio_chat.py` como **demo opcional** del sistema conversacional.
+El repositorio incluye un **frontend interactivo basado en Gradio** (`gradio_chat.py`) que sirve como **demo funcional del asistente conversacional**.
 
-Este archivo permite interactuar con el motor (LangGraph + reglas + LLM opcional) sin necesidad de configurar un frontend adicional.
+Este frontend permite:
+- Probar el flujo completo de conversación en tiempo real.
+- Ver cómo el sistema interpreta lenguaje natural y ejecuta acciones sobre catálogo, carrito y checkout.
+- Evaluar el comportamiento del motor conversacional sin necesidad de integrar un frontend externo.
 
-Para ejecutarlo:
+La demo conecta directamente con el backend (LangGraph + reglas deterministas + LLM opcional), por lo que refleja fielmente el comportamiento real del sistema.
+
+### Ejecución de la demo
 
 python gradio_chat.py
+
 
 ## ✨ Funcionalidades Principales
 
