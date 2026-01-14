@@ -13,17 +13,15 @@ El proyecto está diseñado con un enfoque **práctico y mantenible**, combinand
 - `pip`
 
 ### Instalación de dependencias
-```bash
+```bash```
 pip install -r requirements.txt
-Variables de entorno (opcional)
-Bash
 
+### Variables de entorno (opcional)
 LLM_ROUTER_ENABLED=false
 OPENAI_API_KEY=your_api_key_here
 Por defecto, el proyecto funciona sin LLM.
 
-Ejecución
-Bash
+### Ejecución
 
 uvicorn app.main:app --reload
 El servicio quedará disponible en: http://localhost:8000
@@ -36,7 +34,6 @@ Este archivo permite interactuar con el motor (LangGraph + reglas + LLM opcional
 
 Para ejecutarlo:
 
-```bash
 python gradio_chat.py
 ✨ Funcionalidades Principales
 🛍️ Gestión de Catálogo e Inteligencia
@@ -63,7 +60,7 @@ Confirmación final antes de procesar el pedido.
 🧠 Uso de LLM (opcional)
 El sistema puede utilizar un LLM de OpenAI para clasificación de intención y extracción de slots. Este comportamiento es opcional y está desactivado por defecto.
 
-Variables relevantes:
+### Variables relevantes:
 
 Fragmento de código
 
@@ -71,13 +68,11 @@ LLM_ROUTER_ENABLED=true
 OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-4.1-mini
 LLM_MIN_CONFIDENCE=0.3
-🧪 Tests
+### 🧪 Tests
 El proyecto incluye tests automatizados que cubren los flujos principales de catálogo, carrito y checkout.
 
-Bash
-
 pytest -q
-💬 Ejemplos de uso
+### 💬 Ejemplos de uso
 Consulta de Capacidades
 
 Usuario: ¿Qué puedes hacer?
@@ -100,7 +95,7 @@ Usuario: correo_falso
 
 Bot: Lo siento, el email no parece válido. Por favor, asegúrate de incluir un formato correcto (ejemplo@dominio.com).
 
-🧠 Visión general de la arquitectura
+### 🧠 Visión general de la arquitectura
 Motor conversacional basado en LangGraph para gestionar el estado del formulario y el carrito.
 
 Parsers deterministas para asegurar precisión en IDs y precios.
