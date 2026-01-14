@@ -46,23 +46,40 @@ python gradio_chat.py
 
 ## ✨ Funcionalidades Principales
 
-### 🛍️ Gestión de Catálogo e Inteligencia
-- **Recomendaciones avanzadas**: Filtra productos por aroma, rango de precio o público objetivo (hombre, mujer, unisex).
-- **Auto-asistencia**: Si preguntas _"¿Qué puedes hacer?"_, el bot detalla todas sus capacidades y comandos disponibles.
+### 🛍️ Catálogo y Recomendaciones Inteligentes
+- Consulta del catálogo completo y detalle de productos por **ID o nombre**.
+- **Recomendaciones personalizadas** basadas en:
+  - Familia olfativa (cítrico, amaderado, floral, etc.)
+  - Rango de precios
+  - Público objetivo (hombre, mujer, unisex)
+- Soporte de lenguaje natural en **español e inglés**.
+- Detección automática de idioma y adaptación de respuestas.
 
-### 🛒 Carrito de Compra
-- Añadir / quitar productos por **ID o nombre**.
-- Modificación de cantidades.
-- Resumen detallado del total acumulado.
+### 🛒 Gestión Avanzada de Carrito
+- Añadir y eliminar productos por **ID, nombre o contexto conversacional**.
+- Soporte de **comandos múltiples en una sola frase**  
+  (ej.: _"añádeme 2 del 315 y 1 del 317"_).
+- Modificación de cantidades y ajustes posteriores  
+  (ej.: _"mejor deja solo uno"_).
+- Resolución de ambigüedades con preguntas de aclaración cuando es necesario.
+- Cálculo y visualización del total en tiempo real.
 
-### 💳 Checkout con Formulario Dinámico
-Proceso de compra guiado mediante un flujo de estado que incluye:
-- Recolección de datos de envío y contacto.
+### 🔄 Flujo Conversacional Robusto
+- Motor determinista basado en **reglas priorizadas** y **estado conversacional**.
+- Manejo de:
+  - Contexto activo del producto
+  - Confirmaciones
+  - Clarificaciones
+  - Operaciones pendientes
+- Fallbacks controlados para entradas fuera de alcance (_out of scope_).
+
+### 💳 Checkout Guiado
+- Proceso de compra estructurado mediante un **flujo de estados**.
+- Recolección de datos de envío mediante formulario dinámico.
 - Validaciones integradas:
-  - Formato de email
-  - Códigos postales
   - Campos obligatorios
-- Confirmación final antes de procesar el pedido.
+  - Formato numérico (CP, teléfono)
+- Confirmación explícita antes de finalizar la compra.
 
 
 ## 🧠 Uso de LLM (opcional)
