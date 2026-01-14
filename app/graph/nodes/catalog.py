@@ -101,7 +101,6 @@ def show_product_detail_node(state: ConversationState) -> ConversationState:
 
     lang = (state.preferred_language or "en").lower()
 
-    # ✅ descripción según idioma + fallback
     if lang == "es":
         desc = product.description_es or product.description
     else:

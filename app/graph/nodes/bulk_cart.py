@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Dict, List
 import re
+from typing import Dict, List
 
 from app.engine.state import ConversationState, Mode
 from app.llm.router_schema import CartAction, CartOp
@@ -17,18 +17,25 @@ from app.ux import t
 
 def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
     """
-    Accepts:
-    - product id: "315"
-    - option number: "1" / "2"
+    Parse a user's clarification reply into a concrete product_id.
+
+    Accepted inputs:
+    - A 3-digit product ID (e.g., "315")
+    - An option number (e.g., "1", "2") referring to the candidate list order
+
+    Returns:
+    - product_id if valid and present in candidates, otherwise None.
     """
     tt = (text or "").strip().lower()
 
-    m_id = re.search(r"\b(\d{3})\b", tt)
+    # Direct product ID
+    m_id = re.fullmatch(r"(\d{3})", tt)
     if m_id:
         pid = int(m_id.group(1))
         return pid if pid in candidates else None
 
-    m_opt = re.search(r"\b(\d+)\b", tt)
+    # Option number
+    m_opt = re.fullmatch(r"(\d+)", tt)
     if m_opt:
         idx = int(m_opt.group(1)) - 1
         if 0 <= idx < len(candidates):
@@ -38,17 +45,34 @@ def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
 
 
 def bulk_cart_update_node(state: ConversationState) -> ConversationState:
+    """
+    Apply multiple cart operations in a single turn.
+
+    This node supports:
+    - Bulk actions already parsed into `state.pending_actions`
+    - Name-based actions queued in `state.pending_name_actions` (resolved via search + clarification)
+    - Clarification loops using `state.candidate_products` and `state.pending_bulk_*`
+
+    State-safety rule:
+    - This node may preserve pending actions across turns ONLY when it must ask for clarification.
+    - Once the batch is applied (or aborted), it clears all relevant `pending_*` fields to avoid leaks.
+    """
+    # NOTE: We intentionally append to the existing list when resuming a batch after clarification.
+    # This preserves actions resolved in previous steps of the same bulk flow.
     actions: List[CartAction] = state.pending_actions or []
 
     # --------------------------------------------------
-    # 0) Resolving a previous bulk clarification
+    # 0) Resolve a previous clarification
     # --------------------------------------------------
+    # If the node previously asked "Which one did you mean?", the user's next message should
+    # pick one of `state.candidate_products`. We then reconstruct the pending CartAction.
     pending_bulk_op = state.pending_bulk_op
     pending_bulk_qty = state.pending_bulk_qty
 
     if pending_bulk_op and state.candidate_products:
         product_id = _parse_choice_to_product_id(state.user_message, state.candidate_products)
         if product_id is None:
+            # Keep clarification state intact; user needs to reply with a valid option/ID.
             state.assistant_message = t(state, "bulk_reply_number_id")
             return state
 
@@ -56,20 +80,23 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
         qty = int(pending_bulk_qty or 1)
         actions.append(CartAction(op=op, product_id=product_id, qty=qty))
 
-        # clear bulk clarification state
+        # Clear only the clarification flags; we still need to apply the batch.
         state.candidate_products = []
         state.pending_bulk_op = None
         state.pending_bulk_qty = None
 
     # --------------------------------------------------
-    # 1) Resolve pending_name_actions (created by parser)
+    # 1) Resolve queued name-based actions
     # --------------------------------------------------
-    # ✅ resolve pending_name_actions as a QUEUE (do not lose remaining actions)
+    # `pending_name_actions` is processed like a queue. If we hit ambiguity, we return early
+    # but keep:
+    # - actions resolved so far
+    # - remaining name actions to retry next turn
     pending_name_actions = getattr(state, "pending_name_actions", None) or []
     while pending_name_actions:
-        packed = pending_name_actions.pop(0)  # consume 1
+        packed = pending_name_actions.pop(0)
 
-        # persist the remainder in state in case we need to return early
+        # Persist remaining items before any possible early return (clarification).
         state.pending_name_actions = pending_name_actions
 
         try:
@@ -77,6 +104,7 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
             op = CartOp(op_s)
             qty = int(qty_s)
         except Exception:
+            # Malformed entry: ignore and continue so one bad item doesn't break the batch.
             continue
 
         matches = tool_find_products_by_name(hint)
@@ -86,7 +114,8 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
             continue
 
         if len(matches) > 1:
-            # Ask clarification, ✅ KEEP actions resolved so far AND keep remaining name actions
+            # Ambiguous match: ask user which product they meant.
+            # We must preserve state to resume the same bulk batch next turn.
             state.candidate_products = matches
             state.pending_bulk_op = op.value
             state.pending_bulk_qty = qty
@@ -98,17 +127,23 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
             lines.append(t(state, "reply_number_id"))
 
-            state.pending_actions = actions  # keep resolved actions so far
+            state.pending_actions = actions
             state.assistant_message = "\n".join(lines)
             return state
 
-        # no match -> stop and inform (optional: you could continue instead)
+        # No match: abort this bulk batch (user-friendly + prevents stale pending state).
         state.assistant_message = t(state, "bulk_none")
+        state.pending_actions = []
+        state.pending_name_actions = []
+        state.pending_bulk_op = None
+        state.pending_bulk_qty = None
+        state.candidate_products = []
         return state
 
     # --------------------------------------------------
     # 2) Apply actions
     # --------------------------------------------------
+    # Build a local view of cart quantities to validate removals consistently during the batch.
     in_cart: Dict[int, int] = {item.product_id: item.qty for item in state.cart}
     lines: List[str] = []
     affected: list[int] = []
@@ -174,6 +209,7 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
             affected.append(product_id)
             continue
 
+        # Defensive fallback (should not occur due to schema validation).
         lines.append(t(state, "bulk_not_found", product_id=product_id))
 
     total = tool_cart_total(state)
@@ -188,9 +224,19 @@ def bulk_cart_update_node(state: ConversationState) -> ConversationState:
     state.ui_products = []
     state.ui_cart_total = total
 
+    # Provide conversational context for follow-up commands like "add 1 more".
     if affected:
         state.last_cart_product_ids = list(dict.fromkeys(affected))
         state.selected_product_id = state.last_cart_product_ids[-1]
 
+    # --------------------------------------------------
+    # 3) Clear pending state after the batch completes
+    # --------------------------------------------------
+    # Without this, subsequent turns may reuse stale pending actions and produce incorrect routing.
+    state.pending_actions = []
+    state.pending_name_actions = []
+    state.pending_bulk_op = None
+    state.pending_bulk_qty = None
+    state.candidate_products = []
 
     return state

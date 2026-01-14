@@ -14,23 +14,30 @@ from app.ux import t
 
 
 def add_to_cart_node(state: ConversationState) -> ConversationState:
+    """
+    Add a product to the cart.
+
+    Resolution strategy:
+    - Prefer explicit 3-digit product IDs.
+    - If no ID, try name-based search from the user message.
+    - Fall back to conversational context (`selected_product_id`) only if name search fails.
+    """
     qty, parsed_product_id = parse_qty_and_product_id(state.user_message)
 
-    product_id = parsed_product_id or state.selected_product_id
-
-    # if there's no product_id, try to extract qty from free-text
     if qty is None:
         q2 = parse_qty_only(state.user_message)
         if q2 is not None:
             qty = q2
-
     qty = qty or 1
+
+    product_id = parsed_product_id
 
     if not product_id:
         matches = tool_find_products_by_name(state.user_message)
 
         if len(matches) == 1:
             product_id = matches[0]
+            state.selected_product_id = product_id
 
         elif len(matches) > 1:
             state.candidate_products = matches
@@ -38,22 +45,23 @@ def add_to_cart_node(state: ConversationState) -> ConversationState:
             state.pending_qty = qty
 
             lines = [t(state, "multiple_matches_which_add")]
-
             for i, pid in enumerate(matches, start=1):
                 p = tool_get_product(pid)
                 if p:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
-
             lines.append(t(state, "reply_number_id_name"))
 
             state.assistant_message = "\n".join(lines)
             return state
 
         else:
-            state.assistant_message = t(state, "need_product_id_add")
-            return state
+            
+            product_id = state.selected_product_id
 
-    # --- a partir de aquí ya TENEMOS product_id ---
+    if not product_id:
+        state.assistant_message = t(state, "need_product_id_add")
+        return state
+
     product = tool_get_product(product_id)
     if not product:
         state.assistant_message = t(state, "product_not_found", product_id=product_id)
@@ -81,7 +89,6 @@ def add_to_cart_node(state: ConversationState) -> ConversationState:
     state.ui_products = []
     state.ui_cart_total = tool_cart_total(state)
 
-    # ✅ NEW: remember last cart mutation (for "mejor que sea 1")
     state.last_cart_product_ids = [product_id]
     state.last_cart_op = "add"
     state.last_cart_qty = added
@@ -90,6 +97,7 @@ def add_to_cart_node(state: ConversationState) -> ConversationState:
 
 
 def view_cart_node(state: ConversationState) -> ConversationState:
+    """Render the cart contents and total."""
     if not state.cart:
         state.assistant_message = t(state, "cart_empty")
         return state
@@ -123,11 +131,18 @@ def view_cart_node(state: ConversationState) -> ConversationState:
 
 
 def remove_from_cart_node(state: ConversationState) -> ConversationState:
-    qty, parsed_product_id = parse_qty_and_product_id(state.user_message)
+    """
+    Remove a product from the cart.
 
+    Resolution strategy mirrors `add_to_cart_node`:
+    - Prefer explicit 3-digit product IDs.
+    - Fall back to conversational context (`selected_product_id`).
+    - If still ambiguous, try name-based search and request clarification when needed.
+    """
+    qty, parsed_product_id = parse_qty_and_product_id(state.user_message)
     product_id = parsed_product_id or state.selected_product_id
 
-    # ✅ NEW: if there's no product_id, try to extract qty from free-text
+    # If no product ID was found, attempt to extract a standalone quantity.
     if not product_id and qty is None:
         q2 = parse_qty_only(state.user_message)
         if q2 is not None:
@@ -135,31 +150,25 @@ def remove_from_cart_node(state: ConversationState) -> ConversationState:
 
     qty = qty or 1
 
-    # 👇 SOLO entramos aquí si NO hay id
     if not product_id:
         matches = tool_find_products_by_name(state.user_message)
 
         if len(matches) == 1:
             product_id = matches[0]
-
         elif len(matches) > 1:
             state.candidate_products = matches
             state.pending_product_op = "remove"
             state.pending_qty = qty
 
             lines = [t(state, "multiple_matches_which_remove")]
-
             for i, pid in enumerate(matches, start=1):
                 p = tool_get_product(pid)
                 if p:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
-
             lines.append(t(state, "reply_number_id"))
 
             state.assistant_message = "\n".join(lines)
             return state
-
-
         else:
             state.assistant_message = t(state, "need_product_id_remove")
             return state
@@ -187,7 +196,6 @@ def remove_from_cart_node(state: ConversationState) -> ConversationState:
     state.ui_products = []
     state.ui_cart_total = tool_cart_total(state)
 
-    # ✅ NEW: remember last cart mutation (for "mejor que sea 1")
     state.last_cart_product_ids = [product_id]
     state.last_cart_op = "remove"
     state.last_cart_qty = removed

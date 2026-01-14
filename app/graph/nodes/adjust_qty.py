@@ -14,11 +14,14 @@ from app.ux import t
 
 
 def _norm(text: str | None) -> str:
+    """Normalize user input for robust matching (case-insensitive, trimmed)."""
     return (text or "").strip().casefold()
 
 
 def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
     """
+    Parse a user's choice when disambiguating among candidates.
+
     Accepts:
     - product id: "319"
     - option number: "1" / "2"
@@ -40,6 +43,7 @@ def _parse_choice_to_product_id(text: str, candidates: list[int]) -> int | None:
 
 
 def _ask_pick_one(state: ConversationState, header_key: str, candidates: list[int]) -> None:
+    """Populate the assistant message with a numbered candidate list."""
     lines = [t(state, header_key)]
     for i, pid in enumerate(candidates, start=1):
         p = tool_get_product(pid)
@@ -49,13 +53,15 @@ def _ask_pick_one(state: ConversationState, header_key: str, candidates: list[in
     state.assistant_message = "\n".join(lines)
 
 
-
 def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
-    lang = state.preferred_language or "en"
+    """
+    Adjust the quantity of a product in the cart.
 
-    # --------------------------------------------------
-    # 0) Resolving a pending clarification → consume user choice
-    # --------------------------------------------------
+    This node supports:
+    - interpreting adjustment intent (e.g., "just 2", "mejor que sea 1")
+    - resolving ambiguities by asking the user to pick among candidates
+    """
+    # 0) If a clarification is pending, consume the user's selection.
     if state.pending_product_op == "set_qty" and state.candidate_products:
         target_qty = state.pending_qty
         if target_qty is None:
@@ -69,7 +75,7 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
 
         product_id = chosen
 
-        # ✅ clear clarification state now (break loops)
+        # Clear clarification state to avoid loops on subsequent turns.
         state.candidate_products = []
         state.pending_product_op = None
         state.pending_qty = None
@@ -106,9 +112,7 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
         )
         return state
 
-    # --------------------------------------------------
-    # 1) Normal parse ("mejor que sea 1 ...")
-    # --------------------------------------------------
+    # 1) Normal parse (e.g., "mejor que sea 1 ...")
     target_qty, hint = parse_adjustment(state.user_message)
     if target_qty is None:
         state.assistant_message = t(state, "fallback_ok")
@@ -121,31 +125,25 @@ def adjust_cart_qty_node(state: ConversationState) -> ConversationState:
 
         if len(matches) == 1:
             product_id = matches[0]
-
         elif len(matches) > 1:
             state.candidate_products = matches
             state.pending_product_op = "set_qty"
             state.pending_qty = target_qty
-
             _ask_pick_one(state, "adjust_multiple_found", matches)
             return state
-
         else:
-            # ✅ if hint is garbage (e.g. "sean"), fall back to last_cart_product_ids
+            # If no match, fall back to conversational context when available.
             hint = None
 
     if product_id is None:
         if len(state.last_cart_product_ids) == 1:
             product_id = state.last_cart_product_ids[0]
-
         elif len(state.last_cart_product_ids) > 1:
             state.candidate_products = state.last_cart_product_ids
             state.pending_product_op = "set_qty"
             state.pending_qty = target_qty
-
             _ask_pick_one(state, "adjust_which_of_these", state.last_cart_product_ids)
             return state
-
         else:
             state.assistant_message = t(state, "need_product_id_or_name")
             return state

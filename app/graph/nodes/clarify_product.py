@@ -15,10 +15,18 @@ from app.ux import t
 
 
 def _norm(text: str | None) -> str:
+    """Normalize user input for matching (case-insensitive, trimmed)."""
     return (text or "").strip().casefold()
 
 
 def _parse_choice(text: str) -> Optional[int]:
+    """
+    Parse a user choice from free-text.
+
+    Returns:
+    - 3-digit product id (e.g., 315) when present
+    - otherwise, an integer option number (e.g., 1, 2, 3)
+    """
     tt = _norm(text)
 
     m = re.search(r"\b(\d{3})\b", tt)
@@ -33,6 +41,11 @@ def _parse_choice(text: str) -> Optional[int]:
 
 
 def _pick_candidate_by_text(text: str, candidate_ids: list[int]) -> Optional[int]:
+    """
+    Attempt to pick a single candidate by matching query tokens against brand/name.
+
+    Returns a product_id only when the best match is unique; otherwise None.
+    """
     q = _norm(text)
     if not q:
         return None
@@ -62,6 +75,7 @@ def _pick_candidate_by_text(text: str, candidate_ids: list[int]) -> Optional[int
 
 
 def _get_description_for_lang(state: ConversationState, product) -> str | None:
+    """Pick the best description field based on the user's preferred language."""
     lang = (state.preferred_language or "en").lower()
     if lang == "es":
         return getattr(product, "description_es", None) or getattr(product, "description", None)
@@ -69,6 +83,18 @@ def _get_description_for_lang(state: ConversationState, product) -> str | None:
 
 
 def resolve_product_choice_node(state: ConversationState) -> ConversationState:
+    """
+    Resolve an ambiguous product reference.
+
+    This node is used after the assistant has presented a list of candidate products
+    (state.candidate_products) and is waiting for the user to pick one.
+
+    Supported pending operations:
+    - detail
+    - add
+    - remove
+    - set_qty
+    """
     candidates = state.candidate_products or []
     op = state.pending_product_op
     qty = state.pending_qty or 1
@@ -82,7 +108,7 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
     if choice is None:
         picked = _pick_candidate_by_text(state.user_message, candidates)
         if picked is None:
-            # ✅ UX: lista opciones SIEMPRE cuando hay ambigüedad
+            # When ambiguity remains, always re-render the candidate list to guide the user.
             header_key = {
                 "add": "multiple_matches_which_add",
                 "remove": "multiple_matches_which_remove",
@@ -96,7 +122,6 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
                 if p:
                     lines.append(f"{i}) [{p.id}] {p.brand} - {p.name}")
 
-            # copy final según operación (ya los tienes definidos)
             if op == "detail":
                 lines.append(t(state, "detail_multiple_reply_hint"))
             elif op == "add":
@@ -109,7 +134,7 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
 
         choice = picked
 
-    # choice as product id vs option number
+    # Interpret choice either as product id or as a 1-based option number.
     if 100 <= choice <= 999:
         if choice not in candidates:
             state.assistant_message = t(state, "clarify_id_not_in_options")
@@ -127,19 +152,17 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
         state.assistant_message = t(state, "product_not_found", product_id=product_id)
         return state
 
-    # 🔥 limpiar estado de clarificación (antes de responder)
+    # Clear clarification state before responding to avoid loops.
     state.candidate_products = []
     state.pending_product_op = None
     state.pending_qty = None
 
-    # ✅ mantener “contexto activo” del producto para siguientes turnos tipo "añade 2" / "quítame 1"
+    # Keep active product context for follow-up commands like "add 2" / "remove 1".
     state.selected_product_id = product.id
 
     product_label = f"[{product.id}] {product.brand} - {product.name}"
 
-    # ===============================
     # detail
-    # ===============================
     if op == "detail":
         state.mode = Mode.CATALOG
         state.ui_product = product
@@ -168,9 +191,7 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
         state.assistant_message = "\n".join(lines)
         return state
 
-    # ===============================
     # add / remove / set_qty
-    # ===============================
     if op == "add":
         ok, added = tool_add_to_cart(state, product_id, qty)
         if not ok:
@@ -181,7 +202,6 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
         state.mode = Mode.CART
         state.ui_cart_total = total
 
-        # ✅ contexto para próximos turnos
         state.last_cart_product_ids = [product_id]
         state.last_cart_op = "add"
         state.last_cart_qty = added
@@ -205,7 +225,6 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
         state.mode = Mode.CART
         state.ui_cart_total = total
 
-        # ✅ contexto para próximos turnos
         state.last_cart_product_ids = [product_id]
         state.last_cart_op = "remove"
         state.last_cart_qty = removed
@@ -229,7 +248,6 @@ def resolve_product_choice_node(state: ConversationState) -> ConversationState:
         state.mode = Mode.CART
         state.ui_cart_total = total
 
-        # ✅ contexto para próximos turnos
         state.last_cart_product_ids = [product_id]
         state.last_cart_op = "set_qty"
         state.last_cart_qty = new_qty

@@ -12,6 +12,7 @@ from .product_detail_rules import (
     rule_product_detail_by_id,
     rule_product_detail_by_name,
 )
+from .cart_name_fallback_rules import rule_cart_op_by_name_fallback
 from .recommend_rules import apply_recommend_heuristic
 from .catalog_rules import rule_show_catalog
 from .help_rules import rule_help
@@ -25,16 +26,7 @@ from .cart_single_rules import (
 )
 from .out_of_scope_rules import rule_out_of_scope
 
-
 Rule = Callable[[ConversationState], bool]
-"""
-A routing rule that inspects the current ConversationState.
-
-Each rule:
-- returns True if it handled the state and routing should stop
-- returns False to allow evaluation of the next rule
-"""
-
 
 # Ordered list of routing rules.
 #
@@ -66,8 +58,13 @@ RULES: list[Rule] = [
     rule_remove_qty_only_needs_disambiguation,
     rule_bulk_cart_names,
     rule_single_cart_command,
+
+    # Deterministic cart parser (IDs / multi-action) must win before implicit heuristics.
+    rule_cart_commands_any,
+
     rule_adjust_qty,
     rule_implicit_cart_op,
+    rule_cart_op_by_name_fallback,
     rule_view_cart,
 
     # --- Product detail ---
@@ -75,6 +72,5 @@ RULES: list[Rule] = [
     rule_product_detail_by_name,
 
     # --- Fallbacks ---
-    rule_cart_commands_any,
     rule_out_of_scope,
 ]

@@ -84,6 +84,16 @@ _COPY: dict[str, dict[str, str]] = {
         "ask_which_product": "Which product do you mean? Tell me the ID or the name.",
         "invalid_option_number": "That number is invalid.",
         "id_not_in_options": "That ID is not among the options.",
+        "help_message": (
+            "I can help you with:\n"
+            "- Browsing the perfume catalog\n"
+            "- Viewing product details\n"
+            "- Adding or removing products from your cart\n"
+            "- Checking your cart and total\n"
+            "- Recommending perfumes based on your preferences and budget\n"
+            "- Completing a purchase\n\n"
+            "Just tell me what you’d like to do 🙂"
+        ),
 
         # Clarify / product choice
         "clarify_pick_one": "Which one do you want? Reply with the number, ID, or name.",
@@ -192,6 +202,8 @@ _COPY: dict[str, dict[str, str]] = {
             "Do you confirm the order? (yes/no)"
         ),
         "checkout_form_open_guard": "The shipping form is open 👇 Please fill it in and click “Save details and continue”.",
+        #Out of scope
+        "out_of_scope": "Sorry 😅 that’s outside what I can help with. I can assist you with the catalog, your cart, or recommendations."
 
     },
     "es": {
@@ -257,6 +269,16 @@ _COPY: dict[str, dict[str, str]] = {
         "ask_which_product": "¿De qué producto hablamos? Dime el ID o el nombre.",
         "invalid_option_number": "Ese número no es válido.",
         "id_not_in_options": "Ese ID no está entre las opciones.",
+        "help_message": (
+            "Puedo ayudarte a:\n"
+            "- Ver el catálogo de perfumes\n"
+            "- Consultar detalles de un producto\n"
+            "- Añadir o quitar productos del carrito\n"
+            "- Ver tu carrito y el total\n"
+            "- Recomendar perfumes según tus gustos y presupuesto\n"
+            "- Finalizar una compra\n\n"
+            "Dime qué te gustaría hacer 🙂"
+        ),
 
         # Clarify / product choice
         "clarify_pick_one": "¿Cuál quieres? Responde con el número, el ID o el nombre.",
@@ -378,6 +400,9 @@ _COPY: dict[str, dict[str, str]] = {
             "- Teléfono: {phone}\n\n"
             "¿Confirmas el pedido? (sí/no)"
         ),
+
+        #Out of scope
+        "out_of_scope": "Lo siento 😅 eso se sale de lo que puedo hacer. Si quieres, puedo ayudarte con el catálogo, el carrito o recomendaciones."
     },
 }
 
