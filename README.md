@@ -15,6 +15,8 @@ El proyecto está diseñado con un enfoque **práctico y mantenible**, combinand
 
 ### 📦 Instalación de dependencias
 
+Se recomienda ejecutar el proyecto dentro de un entorno virtual (`venv`) para evitar conflictos de dependencias.
+
 Este proyecto utiliza el estándar moderno de Python basado en `pyproject.toml`.
 
 Las dependencias están declaradas en dicho archivo y bloqueadas mediante `uv.lock`,
