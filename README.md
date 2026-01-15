@@ -13,16 +13,21 @@ El proyecto está diseñado con un enfoque **práctico y mantenible**, combinand
 - Python 3.11 o superior
 - Gestor de dependencias `uv` (recomendado)
 
-### Instalación de dependencias
+### 📦 Instalación de dependencias
 
 Este proyecto utiliza el estándar moderno de Python basado en `pyproject.toml`.
 
 Las dependencias están declaradas en dicho archivo y bloqueadas mediante `uv.lock`,
 lo que garantiza un entorno reproducible.
 
-Para instalar todas las dependencias:
+#### Opción recomendada (con `uv`)
 
+`pip install uv`
 `uv sync`
+
+#### Opción alternativa (sin `uv`)
+
+`pip install -e`
 
 ### Variables de entorno (opcional)
 
