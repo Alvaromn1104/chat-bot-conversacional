@@ -11,11 +11,11 @@ El proyecto está diseñado con un enfoque **práctico y mantenible**, combinand
 ### Requisitos
 
 - Python 3.10 o superior
-- `pip`
+- `uv` instalado
 
 ### Instalación de dependencias
 
-pip install -r requirements.txt
+uv sync
 
 ### Variables de entorno (opcional)
 
